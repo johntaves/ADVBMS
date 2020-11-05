@@ -10,19 +10,26 @@
 #include <Wire.h>
 #include <PacketSerial.h>
 #include "defines.h"
+#include "SerData.h"
+#include "CRC8.h"
 
-//17
-//16
 #define GREEN_LED(x) digitalWrite(GPIO_NUM_4,x)
 #define BLUE_LED(x) digitalWrite(GPIO_NUM_0,x)
 
+bool cellsTimedOut;
+uint8_t sentID=0;
+uint32_t sentMillis,receivedMillis=0,lastRoundMillis=0,numSent=0,failedSer=0;
 CRC8 crc8;
-uint8_t chunkCnt=0;
-extern DataChunk dataBuff;
 
-#define framingmarker (uint8_t)0x00
+struct CellData {
+  uint16_t v,t,rawV,rawT;
+};
+CellData cells[MAX_BANKS][MAX_CELLS];
+CellsSerData outBuff;
 
-PacketSerial_<COBS, framingmarker, > dataSer;
+#define frame (uint8_t)0x00
+
+PacketSerial_<COBS, frame, sizeof(outBuff)> dataSer;
 
 const int relayPins[RELAY_TOTAL] = { GPIO_NUM_23,GPIO_NUM_14,GPIO_NUM_27,GPIO_NUM_26,GPIO_NUM_25,GPIO_NUM_33 };
 
@@ -34,7 +41,6 @@ char spb[1024];
 
 uint32_t curMs = 0;
 bool ledState = false;
-CellModuleInfo cmi[maximum_bank_of_modules][maximum_cell_modules];
 bool sendEmail = false;
 AsyncWebServer server(80);
 SMTPData smtpData;
@@ -53,7 +59,7 @@ uint16_t lastPackMilliVolts = 0xffff;
 int64_t aveAdjMilliAmpMillis = 0,curAdjMilliAmpMillis = 0;
 int numAveAdj = 0,BatAHMeasured = 0,lastTrip = 0;
 bool stateOfChargeValid=false;
-bool cellsTimedOut,maxCellVState,minCellVState
+bool maxCellVState,minCellVState
   ,maxPackVState,minPackVState
   ,maxCellCState=false,minCellCState=false
   ,maxPackCState,minPackCState;
@@ -81,34 +87,49 @@ void timerShuntCallback() {
   if (battSets.nBanks > 0 && (INADevs == 0 || lastPackMilliVolts < 1000)) { // low side shunt probably
     lastPackMilliVolts = 0;
     for (int8_t i = 0; i < battSets.nCells; i++)
-      lastPackMilliVolts += cmi[0][i].voltagemV;
+      lastPackMilliVolts += cells[0][i].v;
   }
 }
 
 void onSerData(const uint8_t *receivebuffer, size_t len)
 {
-
   GREEN_LED(HIGH);
+  CellsSerData* cc = (CellsSerData*)receivebuffer;
+  int nCells = (len - sizeof(CellsSerData))/sizeof(CellSerData);
+  uint8_t* p = (uint8_t*)cc;
+  if (cc->crc == crc8.get_crc8(p, len - 1) && sentID == cc->id) {
+    for (int i=0;i<nCells;i++) {
+      cells[cc->bank][i].rawV = cc->cells[i].v;
+      cells[cc->bank][i].rawT = cc->cells[i].t;
+    }
+    receivedMillis = millis();
+    lastRoundMillis = receivedMillis-sentMillis;
+    sentMillis = 0;
+  } else {
+    Serial.println("Bad packet");
+    failedSer++;
+  }
 
   GREEN_LED(LOW);
 }
 
-void timerTransmitCallback()
+void doPollCells()
 {
-  Serial2.write(framingmarker);
+  uint8_t* p = (uint8_t*)&outBuff;
+  int len = sizeof(CellsSerData) - (sizeof(CellSerData) * (MAX_CELLS - battSets.nCells));
+  Serial2.write(frame);
   delay(3);
 
-  transmitBuffer.sequence = sequence;
-  transmitBuffer.crc = CRC16::CalculateArray((uint8_t *)&transmitBuffer, sizeof(packet) - 2);
-  dataSer.send((byte *)&transmitBuffer, sizeof(transmitBuffer));
-
-  //Grab the time we sent this packet to time how long packets take to move
-  //through the modules.  We only time the COMMAND::ReadVoltageAndStatus packets
-  if (transmitBuffer.command == COMMAND::ReadVoltageAndStatus)
-  {
-    receiveProc.packetLastSentSequence = sequence;
-    receiveProc.packetLastSentMillisecond = millis();
-  }
+  memset(&outBuff,0,sizeof(outBuff));
+  receivedMillis = 0;
+  if (sentMillis > 0)
+    cellsTimedOut = true;
+  sentMillis = millis();
+  numSent++;
+  outBuff.id = ++sentID;
+  outBuff.bank = 0;
+  outBuff.crc = crc8.get_crc8(p+1, len - 1);
+  dataSer.send((byte *)&outBuff, len);
 }
 
 void doAHCalcs() {
@@ -134,17 +155,13 @@ void checkStatus()
   uint32_t thisMillis = millis();
   digitalWrite(GPIO_NUM_32,HIGH);
 
-  cellsTimedOut = receiveProc.HasCommsTimedOut();
-  //if (cellsTimedOut)
-  //  sendEmail("Cells Timed Out");
-
   bool allovervoltrec = true,allundervoltrec = true,hitOver=false,hitUnder=false;
   bool allovertemprec = true,allundertemprec = true;
   //Loop through cells
   for (int8_t m=0;m<battSets.nBanks;m++)
     for (int8_t i = 0; i < battSets.nCells; i++)
     {
-      uint16_t cellV = cmi[m][i].voltagemV;
+      uint16_t cellV = cells[m][i].v;
 
       if (cellV > battSets.limits[limits::Volt][limits::Cell][limits::Max][limits::Trip]) {
         if (!maxCellVState)
@@ -162,7 +179,7 @@ void checkStatus()
       if (cellV < battSets.limits[limits::Volt][limits::Cell][limits::Min][limits::Rec])
         allundervoltrec = false;
 
-      int8_t cellT = cmi[m][i].externalTemp;
+      int8_t cellT = cells[m][i].t;
       if (battSets.useex && cellT != -40) {
         if (cellT > battSets.limits[limits::Temp][limits::Cell][limits::Max][limits::Trip])
           maxCellCState = true;
@@ -498,7 +515,7 @@ void status(AsyncWebServerRequest *request){
   root["maxPackCState"] = maxPackCState;
   root["minPackCState"] = minPackCState;
   root["nocells"] = cellsTimedOut;
-  snprintf(spb,sizeof(spb),"%d/%d %d %dms",receiveProc.packetsReceived,prg.packetsGenerated,receiveProc.totalCRCErrors,receiveProc.packetTimerMillisecond);
+  snprintf(spb,sizeof(spb),"%d %d %dms",numSent,failedSer,lastRoundMillis);
   root["pkts"] = spb;
 
   if (browserNBanks != battSets.nBanks || browserNCells != battSets.nCells) {
@@ -514,15 +531,8 @@ void status(AsyncWebServerRequest *request){
 
     for (uint8_t i = 0; i < battSets.nCells; i++) {
       JsonObject cell = data.createNestedObject();
-      cell["v"] = cmi[bank][i].voltagemV;
-      cell["minv"] = cmi[bank][i].voltagemVMin;
-      cell["maxv"] = cmi[bank][i].voltagemVMax;
-      cell["bypass"] = cmi[bank][i].inBypass;
-      cell["bypasshot"] = cmi[bank][i].bypassOverTemp;
-      cell["int"] = cmi[bank][i].internalTemp;
-      cell["ext"] = cmi[bank][i].externalTemp;
-      cell["badpkt"] = cmi[bank][i].badPacketCount;
-      cell["pwm"] = cmi[bank][i].inBypass? cmi[bank][i].PWMValue:0;
+      cell["v"] = cells[bank][i].v;
+      cell["t"] = cells[bank][i].t;
     }
   }
 
@@ -754,6 +764,8 @@ void onconnect(WiFiEvent_t event, WiFiEventInfo_t info) {
 void setup() {
   Serial.begin(9600);
   Serial2.begin(2400, SERIAL_8N1); // Serial for comms to modules
+  crc8.begin();
+
   if (!readEE((uint8_t*)&wifiSets, sizeof(wifiSets), EEPROM_WIFI))
     wifiSets.apMode = true;
   WiFi.onEvent(onconnect, WiFiEvent_t::SYSTEM_EVENT_STA_GOT_IP);
@@ -822,7 +834,7 @@ void setup() {
   milliAmpMillis = battMilliAmpMillis * 80 / 100; /* No clue what the SOC was, so assume 80% */
   setINAs();
 
-  myTransmitTimer.attach(0.5, timerTransmitCallback);
+  myTransmitTimer.attach(1,doPollCells);
   statusTimer.attach(5, checkStatus);
   smtpData.setSendCallback(emailCallback);
   Serial.println("done setup");

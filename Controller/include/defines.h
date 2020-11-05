@@ -66,6 +66,5 @@ struct BattSettings {
 
 struct CellInfo {
   uint16_t rawV,rawT,v,t;
-}
-extern CellInfo cmi[MAX_BANKS][MAX_CELLS];
+};
 #endif
