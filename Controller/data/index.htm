@@ -1,0 +1,156 @@
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <link rel='icon' href='favicon.ico' type='image/x-icon'/>
+    <title>The Battery</title>
+    <link href="/style.css" rel="stylesheet">
+    <script type="text/javascript" src="/static/jquery.js" integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo=" crossorigin="anonymous"></script>
+    <script type="text/javascript" src="/bms.js" crossorigin="anonymous"></script>
+    <script src="/static/moment.min.js"></script>
+    <script src="/static/Chart.min.js"></script>
+</head>
+
+<body>
+    <div id="header">
+        <div id="info">
+            <div>
+                <div id="temp1" class="stat"><div class="x t">Temp 1</div><a href="" class="x v"></a></div>
+                <div id="temp2" class="stat"><div class="x t">Temp 2</div><a href="" class="x v"></a></div>
+                <div id="celltemp" class="stat"><div class="x t">Cell T</div><div class="x v highlight"></div></div>
+                <div id="cellvolt" class="stat"><div class="x t">Cell V</div><div class="x v highlight"></div></div>
+                <div id="packvolts" class="stat"><div class="x t">Pack (V)</div><div class="x v"></div></div>
+                <div id="packcurrent" class="stat"><div class="x t">Pack (A)</div><div class="x v"></div></div>
+                <div id="pvcurrent" class="stat"><div class="x t">PV (A)</div><div class="x v"></div></div>
+                <div id="loadcurrent" class="stat"><div class="x t">Load (A)</div><div class="x v"></div></div>
+                <div id="soc" class="stat"><div class="x t">SOC</div><div class="x v"></div></div>
+            </div>
+            <div>
+                <div id="pkts" class="stat"><div class="x t">Pkts: sent/rec err dur</div><div class="x v"></div></div>
+                <div id="uptime" class="stat"><div class="x t">Up Time</div><div class="x v"></div></div>
+                <div id="relayStatus" class="stat"><div class="x t">J1</div><a href="" class="x v"></a></div>
+            </div>
+        </div>
+        <div id="menu">
+            <a id="cellsMenu" href="cells">Cells</a>
+            <a id="settingsMenu" href="settings">Settings</a>
+            <a id="battMenu" href="batt">Battery</a>
+            <a id="netMenu" href="net">Network</a>
+        </div>
+        <div id='nocells' class='error'>Cells are not responding</div>
+        <div id='nocontroller' class='error'>Controller is not responding</div>
+        <div id='saveerror' class='error'>Failed to save settings</div>
+        <div id='savesuccess' class='success'>Settings saved</div>
+        <div id='debuginfo'></div>
+    </div>
+    <div id="content">
+        <div id="cells">
+            <canvas id="cellCan" width="400" height="400"></canvas>
+        </div>
+        <div id="settings">
+            <form method="POST" action="saverules" autocomplete="off">
+                <div id="limit">
+                <label for="limitx"></label>
+                    <input type="number" name="limitx" id="limitx" required=""></div>
+                <div id="relays">
+                    <div id="relay">
+                        <label for="relayName">J</label>
+                            <input type="text" name="relayName" id="relayName" value="J1">
+                        <select id="relayType" name="relayType"><option value="0">Load</option><option value="1">Charger</option></select>
+                        <label for="relayDoSOC"><input type="checkbox" id="relayDoSOC" name="relayDoSOC">Use SOC</label>
+                        <label for="relayTrip">Trip:</label>
+                            <input type="number" min="0" max="100" step="1" name="relayTrip" id="relayTrip" value="50" required="">
+                        <label for="relayRec">Rec:</label>
+                            <input type="number" min="0" max="100" step="1" name="relayRec" id="relayRec" value="40" required="">
+                    </div>
+                </div>
+                <label for="useex">Use external cell temperature: </label><input id="useex" name="useex" type="checkbox" />
+                <div class="buttonhold"><input type="submit" value="Save" /></div>
+            </form>
+        </div>
+        <div id="batt">
+            <form method="POST" action="savecapacity" autocomplete="off">
+                <div class="settings">
+                    <div>
+                        <label for="CurSOC">Capacity (%):</label>
+                        <input type="number" name="CurSOC" id="CurSOC" value="" maxlength="3" /> Leave empty for no change.
+                    </div>
+                    <div>
+                        <label for="PollFreq">Poll Time (ms):</label>
+                        <input type="number" name="PollFreq" id="PollFreq" value="500" maxlength="10" />
+                    </div>
+                    <div>
+                        <label for="Avg">Averages:</label>
+                        <input type="number" name="Avg" id="Avg" value="" required="" maxlength="4" />
+                    </div>
+                    <div>
+                        <label for="ConvTime">Conversion Time:</label>
+                        <input type="number" name="ConvTime" id="ConvTime" value="" required="" maxlength="4" />
+                    </div>
+                    <div><label for="socLastAdj">Last SOC Adj (mAh):</label>&nbsp;<span id="socLastAdj"></span></div>
+                    <div><label for="socAvgAdj">Ave SOC Adj (mAh:n):</label>&nbsp;<span id="socAveAdj"></span></div>
+                    <div><label for="BatAHMeasured">Measured Capacity (Ah):</label>&nbsp;<span id="BatAHMeasured"></span></div>
+
+                    <div>
+                        <label for="BattAH">Capacity (Ah):</label>
+                        <input type="number" name="BattAH" id="BattAH" value="" required="" maxlength="4" />
+                    </div>
+                    <div>
+                        <label for="MaxAmps">Pack Max Amps (A):</label>
+                        <input type="number" name="MaxAmps" id="MaxAmps" value="" required="" maxlength="3" />
+                    </div>
+                    <div>
+                        <label for="ShuntUOhms">Pack Shunt Resistance (&micro;&ohm;):</label>
+                        <input type="number" name="ShuntUOhms" id="ShuntUOhms" value="" required="" maxlength="5" />
+                    </div>
+                    <div>
+                        <label for="PVMaxAmps">PV Max Amps (A):</label>
+                        <input type="number" name="PVMaxAmps" id="PVMaxAmps" value="" required="" maxlength="3" />
+                    </div>
+                    <div>
+                        <label for="PVShuntUOhms">PV Shunt Resistance (&micro;&ohm;):</label>
+                        <input type="number" name="PVShuntUOhms" id="PVShuntUOhms" value="" required="" maxlength="5" />
+                    </div>
+                    <div>
+                        <label for="nBanks">Banks:</label>
+                        <input type="number" name="nBanks" id="nBanks" value="" required="" maxlength="5" />
+                    </div>
+                    <div>
+                        <label for="nCells">Cells per bank:</label>
+                        <input type="number" name="nCells" id="nCells" value="" required="" maxlength="5" />
+                    </div>
+
+                    <div class="buttonhold"><input type="submit" value="Save Capacity"/></div>
+                </div>
+            </form>
+        </div>
+        <div id="net">
+            <form method="POST" action="saveemail" autocomplete="off">
+                <div><label for="email">Alert Email:</label>
+                <input name="email" type="text"/></div>
+                <div><label for="senderEmail">Sender Email:</label>
+                <input name="senderEmail" type="text"/></div>
+                <div><label for="senderPW">Password:</label>
+                <input name="senderPW" type="password"/></div>
+                <div><label for="senderServer">Server:</label>
+                <input name="senderServer" type="text"/></div>
+                <div><label for="senderPort">Port:</label>
+                <input name="senderPort" type="number"/></div>
+                <div><label for="senderSubject">Subject:</label>
+                <input name="senderSubject" type="text"/></div>
+                <div class="buttonhold"><input type="submit" value="Save settings" /></div>
+                <div class="buttonhold"><button id="email">Test EMail</button></div>
+            </form>
+            <form method="POST" action="savewifi" autocomplete="off">
+                <div>
+                    <label for="ssid">Network Name:</label>
+                    <input name="ssid" type="text"/><button id="kickWifi">Retry</button>
+                </div>
+                <div>
+                    <label for="password">Password:</label>
+                    <input name="password" type="password"/>
+                </div>
+                <div class="buttonhold"><input type="submit" value="Save settings" /></div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>
