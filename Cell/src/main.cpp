@@ -21,9 +21,9 @@
 CRC8 crc8;
 
 
-PacketSerial_<COBS, framingmarker, 64> packSer;
+PacketSerial_<COBS, framingmarker, 64> dataSer;
 
-void doPacket(const uint8_t *inBuf, size_t len)
+void onSerData(const uint8_t *inBuf, size_t len)
 {
   struct DataChunk* cc;
   if (len > 0)
@@ -65,10 +65,10 @@ void setup() {
   DDRA |= _BV(DDA3) | _BV(DDA6) | _BV(DDA5); // PA3, PA5, and PA6 outputs
   crc8.begin();
   Serial.begin(2400, SERIAL_8N1);
-  packSer.setStream(&Serial);
-  packSer.setPacketHandler(&doPacket);
+  dataSer.setStream(&Serial);
+  dataSer.setPacketHandler(&onSerData);
 }
 
 void loop() {
-  packSer.update();
+  dataSer.update();
 }

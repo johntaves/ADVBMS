@@ -10,25 +10,19 @@
 #include <Wire.h>
 #include <PacketSerial.h>
 #include "defines.h"
-#include "PacketRequestGenerator.h"
-#include "PacketReceiveProcessor.h"
 
 //17
 //16
 #define GREEN_LED(x) digitalWrite(GPIO_NUM_4,x)
 #define BLUE_LED(x) digitalWrite(GPIO_NUM_0,x)
 
-Queue requestQueue(sizeof(packet), 16, FIFO);
-
-PacketRequestGenerator prg = PacketRequestGenerator(&requestQueue);
-
-PacketReceiveProcessor receiveProc = PacketReceiveProcessor();
-uint16_t sequence = 0;
-uint8_t counter = 0;
+CRC8 crc8;
+uint8_t chunkCnt=0;
+extern DataChunk dataBuff;
 
 #define framingmarker (uint8_t)0x00
 
-PacketSerial_<COBS, framingmarker, 128> myPacketSerial;
+PacketSerial_<COBS, framingmarker, > dataSer;
 
 const int relayPins[RELAY_TOTAL] = { GPIO_NUM_23,GPIO_NUM_14,GPIO_NUM_27,GPIO_NUM_26,GPIO_NUM_25,GPIO_NUM_33 };
 
@@ -91,118 +85,29 @@ void timerShuntCallback() {
   }
 }
 
-
-//Lazy load the config data - Every 10 seconds see if there is a module we don't have configuration data for, if so request it
-void timerLazyCallback()
+void onSerData(const uint8_t *receivebuffer, size_t len)
 {
-//Find the first module that doesn't have settings cached and request them
-//we only do 1 module at a time to avoid flooding the queue
-  for (uint8_t bank = 0; bank < battSets.nBanks; bank++)
-  {
-    for (uint8_t module = 0; module < battSets.nCells; module++)
-    {
-      if (!cmi[bank][module].settingsCached)
-      {
-        prg.sendGetSettingsRequest(bank, module);
-      }
-    }
-  }
-}
 
-void onPacketReceived(const uint8_t *receivebuffer, size_t len)
-{
-  //Note that this function gets called frequently with zero length packets
-  //due to the way the modules operate
   GREEN_LED(HIGH);
-  if (len == sizeof(packet))
-    receiveProc.ProcessReply(receivebuffer, sequence);
 
   GREEN_LED(LOW);
 }
 
-void timerEnqueueCallback()
-{
-
-  //this is called regularly on a timer, it determines what request to make to the modules (via the request queue)
-  for (uint8_t b = 0; b < battSets.nBanks; b++)
-  {
-
-    prg.sendCellVoltageRequest(b);
-    prg.sendCellTemperatureRequest(b);
-
-    //If any module is in bypass then request PWM reading for whole bank
-    for (uint8_t m = 0; m < battSets.nCells; m++)
-    {
-      if (cmi[b][m].inBypass)
-      {
-        prg.sendReadBalancePowerRequest(b);
-        break;
-      }
-    }
-
-    //Every 50 loops also ask for bad packet count (saves battery power if we dont ask for this all the time)
-    if (counter % 50 == 0)
-    {
-      prg.sendReadBadPacketCounter(b);
-    }
-  }
-
-  //It's an unsigned byte, let it overflow to reset
-  counter++;
-}
-
-void dumpPacketToDebug(packet *buffer)
-{
-  Serial.print(buffer->address, HEX);
-  Serial.print('/');
-  Serial.print(buffer->command, HEX);
-  Serial.print('/');
-  Serial.print(buffer->sequence, HEX);
-  Serial.print('=');
-  for (size_t i = 0; i < maximum_cell_modules; i++)
-  {
-    Serial.print(buffer->moduledata[i], HEX);
-    Serial.print(" ");
-  }
-  Serial.print(" =");
-  Serial.print(buffer->crc, HEX);
-}
-
 void timerTransmitCallback()
 {
-  // Called to transmit the next packet in the queue need to ensure this procedure is called more frequently than
-  // items are added into the queue
-  if (!requestQueue.isEmpty())
+  Serial2.write(framingmarker);
+  delay(3);
+
+  transmitBuffer.sequence = sequence;
+  transmitBuffer.crc = CRC16::CalculateArray((uint8_t *)&transmitBuffer, sizeof(packet) - 2);
+  dataSer.send((byte *)&transmitBuffer, sizeof(transmitBuffer));
+
+  //Grab the time we sent this packet to time how long packets take to move
+  //through the modules.  We only time the COMMAND::ReadVoltageAndStatus packets
+  if (transmitBuffer.command == COMMAND::ReadVoltageAndStatus)
   {
-    packet transmitBuffer;
-
-
-    //Wake up the connected cell module from sleep
-    Serial2.write(framingmarker);
-    delay(3);
-
-    requestQueue.pop(&transmitBuffer);
-    sequence++;
-    transmitBuffer.sequence = sequence;
-    transmitBuffer.crc = CRC16::CalculateArray((uint8_t *)&transmitBuffer, sizeof(packet) - 2);
-    myPacketSerial.send((byte *)&transmitBuffer, sizeof(transmitBuffer));
-
-    //Grab the time we sent this packet to time how long packets take to move
-    //through the modules.  We only time the COMMAND::ReadVoltageAndStatus packets
-    if (transmitBuffer.command == COMMAND::ReadVoltageAndStatus)
-    {
-      receiveProc.packetLastSentSequence = sequence;
-      receiveProc.packetLastSentMillisecond = millis();
-    }
-
-    // Output the packet we just transmitted to debug console
-#if 0
-    Serial.print("S:");
-    dumpPacketToDebug(&transmitBuffer);
-    Serial.print("/Q:");
-    Serial.println(requestQueue.getCount());
-#endif
-
+    receiveProc.packetLastSentSequence = sequence;
+    receiveProc.packetLastSentMillisecond = millis();
   }
 }
 
@@ -900,8 +805,8 @@ void setup() {
     return;
   }
 
-  myPacketSerial.setStream(&Serial2); // start serial for output
-  myPacketSerial.setPacketHandler(&onPacketReceived);
+  dataSer.setStream(&Serial2); // start serial for output
+  dataSer.setPacketHandler(&onSerData);
 
   pinMode(GPIO_NUM_4, OUTPUT);
   pinMode(GPIO_NUM_0, OUTPUT);
@@ -917,12 +822,7 @@ void setup() {
   milliAmpMillis = battMilliAmpMillis * 80 / 100; /* No clue what the SOC was, so assume 80% */
   setINAs();
 
-  //Ensure we service the cell modules every 4 seconds
-  myTimer.attach(4, timerEnqueueCallback);
-
-  //We process the transmit queue every 0.5 seconds (this needs to be lower delay than the queue fills)
   myTransmitTimer.attach(0.5, timerTransmitCallback);
-  myLazyTimer.attach(10, timerLazyCallback);
   statusTimer.attach(5, checkStatus);
   smtpData.setSendCallback(emailCallback);
   Serial.println("done setup");
@@ -939,7 +839,7 @@ void loop() {
   }
   if (lastMillis > millis()) milliRolls++;
   lastMillis = millis();
-  myPacketSerial.update();
+  dataSer.update();
 
   if ((millis() - curMs) > (WiFi.getMode() == WIFI_MODE_AP ? 1000 : 2000)) {
     BLUE_LED(ledState ? LOW : HIGH);
