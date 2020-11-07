@@ -17,4 +17,5 @@ struct CellsSerData {
   CellSerData cells[MAX_CELLS];
 } __attribute__((packed));
 
+extern char CRC8(const char *data,int length);
 #endif

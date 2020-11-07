@@ -4,15 +4,17 @@
 #include <avr/power.h>
 #include <avr/wdt.h>
 #include "SerData.h"
-#include "CRC8.h"
 
 #define BLUELED_ON {PORTA |= _BV(PORTA5);}
 #define BLUELED_OFF {PORTA &= (~_BV(PORTA5));}
 #define GREENLED_ON {PORTA |= _BV(PORTA6);}
 #define GREENLED_OFF {PORTA &= (~_BV(PORTA6));}
 
-#define ENABLE_SER {UCSR0B |= (1 << TXEN0);}
-#define DISABLE_SER {UCSR0B &= ~_BV(TXEN0);}
+#define ENABLE_SERRX {UCSR0B |= (1 << RXEN0);}
+#define DISABLE_SERRX {UCSR0B &= ~_BV(RXEN0);}
+
+#define ENABLE_SERTX {UCSR0B |= (1 << TXEN0);}
+#define DISABLE_SERTX {UCSR0B &= ~_BV(TXEN0);}
 
 #define LOAD_ON {PORTA |= _BV(PORTA3);}
 #define LOAD_OFF {PORTA &= (~_BV(PORTA3));}
@@ -20,18 +22,15 @@
 #define REFV_ON {PORTA |= _BV(PORTA7);}
 #define REFV_OFF {PORTA &= (~_BV(PORTA7));}
 
-#define framingmarker (uint8_t)0x00
+#define frame (uint8_t)0x00
 
-CRC8 crc8;
-
-PacketSerial_<COBS, framingmarker, 64> dataSer;
-
-bool doingV;
+PacketSerial_<COBS, frame, sizeof(CellsSerData)> dataSer;
+bool doingV,wdt_hit,doneRec;
 uint16_t lastT,lastV;
 
 ISR(WDT_vect)
 {
-  //This is the watchdog timer - something went wrong and no activity recieved in a while
+  wdt_hit = true; // this just turns off the load if we did not get woken by serial
 }
 
 ISR(ADC_vect)
@@ -42,6 +41,23 @@ ISR(ADC_vect)
   if (doingV)
     lastV = val;
   else lastT = val;
+}
+
+void doOneLed(bool blue,int del) {
+  if (blue) BLUELED_ON
+  else GREENLED_ON;
+  delay(del);
+  if (blue) BLUELED_OFF
+  else GREENLED_OFF;
+}
+
+void flashLed(bool blue,int n) {
+  int del=50;
+  for (int i=0;i<n-1;i++) {
+    doOneLed(blue,del);
+    delay(del);
+  }
+  doOneLed(blue,del);
 }
 
 void StartADC() {
@@ -86,8 +102,8 @@ void onSerData(const uint8_t *inBuf, size_t len)
   GREENLED_ON;
   CellsSerData* cc = (CellsSerData*)inBuf;
   int nCells = (len - sizeof(CellsSerData))/sizeof(CellSerData);
-  uint8_t* p = (uint8_t*)cc;
-  if (len > 0 && cc->crc == crc8.get_crc8(p+1, len - 1)) {
+  char* p = (char*)cc;
+  if (len > 0 && cc->crc == CRC8(p+1, len - 1)) {
     int i=0;
     while (i<nCells && cc->cells[i].used == 1)
       i++;
@@ -97,41 +113,50 @@ void onSerData(const uint8_t *inBuf, size_t len)
         // set wake up to shut this off
         LOAD_ON;
       
-      REFV_ON;
-      delay(4);
-
-      doingV = true;
-      ADMUXA = (0 << MUX5) | (0 << MUX4) | (1 << MUX3) | (0 << MUX2) | (0 << MUX1) | (0 << MUX0);
-      StartADC(); // an interrupt will fire to catch the value;
-
-      doingV = false;
-      ADMUXA = (0 << MUX5) | (0 << MUX4) | (0 << MUX3) | (1 << MUX2) | (0 << MUX1) | (0 << MUX0);
-      StartADC();
-
-      REFV_OFF;
       cc->cells[i].v = lastV; // read voltage
       cc->cells[i].t = lastT; // read temp
 
-      cc->crc = crc8.get_crc8(p+1, len - 1);
+      cc->crc = CRC8(p+1, len - 1);
     }
-    ENABLE_SER;
-
-    Serial.write(framingmarker);
-    Serial.flush();
-
+    Serial.write(frame);
     dataSer.send(inBuf, len);
-
-    Serial.flush();
-    DISABLE_SER;
   }
 
   GREENLED_OFF;
+  doneRec = true;
 }
 
-void setup() {
-  wdt_disable();
-  wdt_reset();
+void getADCVals() {
+  REFV_ON;
+  delay(4);
 
+  doingV = true;
+  ADMUXA = (0 << MUX5) | (0 << MUX4) | (1 << MUX3) | (0 << MUX2) | (0 << MUX1) | (0 << MUX0);
+  StartADC(); // an interrupt will fire to catch the value;
+
+  doingV = false;
+  ADMUXA = (0 << MUX5) | (0 << MUX4) | (0 << MUX3) | (1 << MUX2) | (0 << MUX1) | (0 << MUX0);
+  StartADC();
+
+  REFV_OFF;
+}
+
+void setPorts() {
+  PUEA = 0;
+  PUEB = 0;
+  DDRA |= _BV(DDA3) | _BV(DDA6) | _BV(DDA7) | _BV(DDA5); // PA3, PA5, and PA6 outputs
+  DDRB |= _BV(DDB1);
+
+  //Set the extra high sink capability of pin PA7 is enabled.
+  PHDE |= _BV(PHDEA1);
+  LOAD_OFF;
+  REFV_OFF;
+
+  GREENLED_OFF;
+  BLUELED_OFF;
+}
+
+void watch5sec() {
   MCUSR = 0;
   //Enable watchdog (to reset)
   WDTCSR |= bit(WDE);
@@ -141,16 +166,18 @@ void setup() {
   // We INTERRUPT the chip after 8 seconds of sleeping (not reboot!)
   // WDE: Watchdog Enable
   // Bits 5, 2:0 – WDP[3:0]: Watchdog Timer Prescaler 3 - 0
-  WDTCSR = bit(WDIE) | bit(WDP3) | bit(WDP0);
+  WDTCSR = bit(WDIE) | bit(WDP3);
   //| bit(WDE)
 
   wdt_reset();
+}
 
-  DDRA |= _BV(DDA3) | _BV(DDA6) | _BV(DDA5); // PA3, PA5, and PA6 outputs
-  crc8.begin();
-  Serial.begin(2400, SERIAL_8N1);
-  dataSer.setStream(&Serial);
-  dataSer.setPacketHandler(&onSerData);
+void enableStartFrameDetection() {
+  noInterrupts();
+  // Enable Start Frame Detection
+  UCSR0D = (1 << RXSIE0) | (1 << SFDE0);
+
+  interrupts();
 }
 
 void doSleep() {
@@ -161,13 +188,8 @@ void doSleep() {
   // disable ADC
   ADCSRA = 0;
   
-#if defined(DIYBMSMODULEVERSION) && DIYBMSMODULEVERSION < 430
-set_sleep_mode(SLEEP_MODE_PWR_DOWN);
-#else
-//Using an external crystal so keep it awake - consumes more power (about 0.97mA vs 0.78mA) but module wakes quicker (6 clock cycles)
-set_sleep_mode(SLEEP_MODE_STANDBY);
-#endif
-  
+  set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+ 
   power_spi_disable();
   power_timer0_disable();
   power_timer1_disable();
@@ -199,15 +221,63 @@ set_sleep_mode(SLEEP_MODE_STANDBY);
   ADCSRA = old_ADCSRA;
 }
 
+CellsSerData buf;
+void sendTest() {
+  buf.id=4;
+  buf.id++;
+  buf.bank=0;
+//  buf.crc = crc8.get_crc8(p+1, len - 1);
+  dataSer.send("Holy Fuck Satman",17);
+//  dataSer.send(p,len);
+}
+
+void setup() {
+  wdt_disable();
+  wdt_reset();
+  watch5sec();
+
+  setPorts();
+  power_usart0_enable();
+  
+  ENABLE_SERRX;
+  ENABLE_SERTX;
+  // disable serial 1
+  UCSR1B &= ~_BV(RXEN1);
+  UCSR1B &= ~_BV(TXEN1);
+
+  memset(&buf,0,sizeof(buf));
+  Serial.begin(2400, SERIAL_8N1);
+  dataSer.setStream(&Serial);
+  dataSer.setPacketHandler(&onSerData);
+  flashLed(true,3);
+  sendTest();
+}
+
 void loop() {
   wdt_reset();
+  wdt_hit = false;
+  enableStartFrameDetection();
+  doSleep();
+  
+  if (wdt_hit)
+  {
+    setPorts();
+    ENABLE_SERRX;
+    ENABLE_SERTX;
 
-  noInterrupts();
-  // Enable Start Frame Detection
-  UCSR0D = (1 << RXSIE0) | (1 << SFDE0);
+    LOAD_OFF;
 
-  interrupts();
+    sendTest();
 
-
-  dataSer.update();
+    flashLed(true,2);
+  } else {
+    flashLed(false,1);
+    getADCVals();
+    flashLed(false,3);
+    doneRec = false;
+    while (!doneRec) {
+      delay(10);
+      dataSer.update();
+    }
+  }
 }
