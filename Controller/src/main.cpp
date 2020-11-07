@@ -5,13 +5,11 @@
 #include <INA.h>
 #include "ArduinoJson.h"
 #include "ESP32_MailClient.h"
-#include "crc16.h"
 #include <Ticker.h>
 #include <Wire.h>
 #include <PacketSerial.h>
 #include "defines.h"
 #include "SerData.h"
-#include "CRC8.h"
 
 #define GREEN_LED(x) digitalWrite(GPIO_NUM_4,x)
 #define BLUE_LED(x) digitalWrite(GPIO_NUM_0,x)
@@ -19,7 +17,6 @@
 bool cellsTimedOut;
 uint8_t sentID=0;
 uint32_t sentMillis,receivedMillis=0,lastRoundMillis=0,numSent=0,failedSer=0;
-CRC8 crc8;
 
 struct CellData {
   uint16_t v,t,rawV,rawT;
@@ -65,6 +62,27 @@ bool maxCellVState,minCellVState
   ,maxPackCState,minPackCState;
 Ticker myShuntCounter,statusTimer,myLazyTimer,myTransmitTimer,myTimer;
 
+uint8_t CRC8(const uint8_t *data,int length) 
+{
+   uint8_t crc = 0x00;
+   uint8_t extract;
+   uint8_t sum;
+   for(int i=0;i<length;i++)
+   {
+      extract = *data;
+      for (uint8_t tempI = 8; tempI; tempI--) 
+      {
+         sum = (crc ^ extract) & 0x01;
+         crc >>= 1;
+         if (sum)
+            crc ^= 0x8C;
+         extract >>= 1;
+      }
+      data++;
+   }
+   return crc;
+}
+
 void timerShuntCallback() {
   if (INADevs > 0) {
     lastPackMilliVolts = INA.getBusMilliVolts(0);
@@ -91,22 +109,45 @@ void timerShuntCallback() {
   }
 }
 
+void printCell(CellSerData *c) {
+  Serial.print("D:");
+  Serial.print(c->dump);
+  Serial.print("U:");
+  Serial.print(c->used);
+  Serial.print("V:");
+  Serial.print(c->v);
+  Serial.print("T:");
+  Serial.println(c->t);
+}
+int cnt=0;
 void onSerData(const uint8_t *receivebuffer, size_t len)
 {
+  if (!len)
+    return;
+  Serial.print("Got something:");
+  Serial.print(len);
+  Serial.print(":");
+  Serial.println(cnt++);
   GREEN_LED(HIGH);
   CellsSerData* cc = (CellsSerData*)receivebuffer;
-  int nCells = (len - sizeof(CellsSerData))/sizeof(CellSerData);
+  int nCells = (len - sizeof(CellsHeader))/sizeof(CellSerData);
   uint8_t* p = (uint8_t*)cc;
-  if (cc->crc == crc8.get_crc8(p, len - 1) && sentID == cc->id) {
+  Serial.print(":");
+  Serial.println(nCells);
+  if (len > 0 && cc->hdr.crc == CRC8(p+1, len - 1)/* && sentID == cc->id */) {
     for (int i=0;i<nCells;i++) {
-      cells[cc->bank][i].rawV = cc->cells[i].v;
-      cells[cc->bank][i].rawT = cc->cells[i].t;
+      cells[cc->hdr.bank][i].rawV = cc->cells[i].v;
+      cells[cc->hdr.bank][i].rawT = cc->cells[i].t;
+      printCell(&cc->cells[i]);
     }
     receivedMillis = millis();
     lastRoundMillis = receivedMillis-sentMillis;
     sentMillis = 0;
   } else {
-    Serial.println("Bad packet");
+    Serial.print("Fail:");
+    Serial.print(cc->hdr.crc);
+    Serial.print(" X:");Serial.print(CRC8(p+1, len - 1));
+    Serial.print(" id:");Serial.print(cc->hdr.id);
     failedSer++;
   }
 
@@ -115,6 +156,8 @@ void onSerData(const uint8_t *receivebuffer, size_t len)
 
 void doPollCells()
 {
+  GREEN_LED(HIGH);
+
   uint8_t* p = (uint8_t*)&outBuff;
   int len = sizeof(CellsSerData) - (sizeof(CellSerData) * (MAX_CELLS - battSets.nCells));
   Serial2.write(frame);
@@ -126,10 +169,12 @@ void doPollCells()
     cellsTimedOut = true;
   sentMillis = millis();
   numSent++;
-  outBuff.id = ++sentID;
-  outBuff.bank = 0;
-  outBuff.crc = crc8.get_crc8(p+1, len - 1);
+  outBuff.hdr.id = ++sentID;
+  outBuff.hdr.bank = 0;
+  outBuff.hdr.crc = CRC8(p+1, len - 1);
   dataSer.send((byte *)&outBuff, len);
+  delay(50);
+  GREEN_LED(LOW);
 }
 
 void doAHCalcs() {
@@ -151,9 +196,6 @@ void checkStatus()
 {
   if (INADevs > 0 && lastPackMilliVolts == 0xffff)
     return; // blow out of here while waiting for first info
-
-  uint32_t thisMillis = millis();
-  digitalWrite(GPIO_NUM_32,HIGH);
 
   bool allovervoltrec = true,allundervoltrec = true,hitOver=false,hitUnder=false;
   bool allovertemprec = true,allundertemprec = true;
@@ -205,10 +247,11 @@ void checkStatus()
   if (!battSets.useex || (minCellCState && allundertemprec))
     minCellCState = false;
 
+  digitalWrite(GPIO_NUM_32,HIGH); // power the resistors
+  delay(1); // time for volts to settle, pulled out of my ass
   curTemp1 = getTemp(GPIO_NUM_35);
   curTemp2 = getTemp(GPIO_NUM_13);
   digitalWrite(GPIO_NUM_32,LOW);
-  Serial.println(millis() - thisMillis);
 
   if (curTemp1 > battSets.limits[limits::Temp][limits::Pack][limits::Max][limits::Trip])
     maxPackCState = true;
@@ -323,10 +366,9 @@ bool readEE(uint8_t *p,size_t s,uint32_t start) {
   EEPROM.begin(EEPROMSize);
   for (int i=0;i<s;i++)
     *p++ = EEPROM.read(i+start);
-  uint16_t ck;
-  EEPROM.get(start + s, ck);
+  uint8_t ck = EEPROM.get(start + s, ck);
   EEPROM.end();
-  uint16_t checksum = CRC16::CalculateArray(p, s);
+  uint8_t checksum = CRC8(p, s);
   return checksum == ck;
 }
 
@@ -334,7 +376,7 @@ void writeEE(uint8_t *p,size_t s,uint32_t start) {
   EEPROM.begin(EEPROMSize);
   for (int i=0;i<s;i++)
     EEPROM.write(i+start,*p++);
-  uint16_t checksum = CRC16::CalculateArray(p, s);
+  uint8_t checksum = CRC8(p, s);
   EEPROM.put(start+s,checksum);
   EEPROM.commit();
 }
@@ -732,7 +774,6 @@ void toggleTemp(AsyncWebServerRequest *request) {
 }
 
 void startServer() {
-  Serial.println("In Connect");
   Serial.println(WiFi.localIP());
 
   server.on("/email", HTTP_POST, [](AsyncWebServerRequest *request){
@@ -758,13 +799,15 @@ void startServer() {
   server.begin();
 }
 void onconnect(WiFiEvent_t event, WiFiEventInfo_t info) {
+  Serial.print("In Connect: ");
+  Serial.print(event);
+  Serial.print(" -- ");
   startServer();
 }
 
 void setup() {
   Serial.begin(9600);
   Serial2.begin(2400, SERIAL_8N1); // Serial for comms to modules
-  crc8.begin();
 
   if (!readEE((uint8_t*)&wifiSets, sizeof(wifiSets), EEPROM_WIFI))
     wifiSets.apMode = true;
@@ -834,8 +877,8 @@ void setup() {
   milliAmpMillis = battMilliAmpMillis * 80 / 100; /* No clue what the SOC was, so assume 80% */
   setINAs();
 
-  myTransmitTimer.attach(1,doPollCells);
-  statusTimer.attach(5, checkStatus);
+  myTransmitTimer.attach_ms(1000,doPollCells);
+  statusTimer.attach_ms(5000, checkStatus);
   smtpData.setSendCallback(emailCallback);
   Serial.println("done setup");
 }
@@ -852,8 +895,7 @@ void loop() {
   if (lastMillis > millis()) milliRolls++;
   lastMillis = millis();
   dataSer.update();
-
-  if ((millis() - curMs) > (WiFi.getMode() == WIFI_MODE_AP ? 1000 : 2000)) {
+  if ((millis() - curMs) > (WiFi.getMode() == WIFI_MODE_AP ? 750 : 2000)) {
     BLUE_LED(ledState ? LOW : HIGH);
     ledState = !ledState;
     curMs = millis();
