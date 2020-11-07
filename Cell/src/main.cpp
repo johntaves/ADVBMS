@@ -43,6 +43,27 @@ ISR(ADC_vect)
   else lastT = val;
 }
 
+uint8_t CRC8(const uint8_t *data,int length) 
+{
+   uint8_t crc = 0x00;
+   uint8_t extract;
+   uint8_t sum;
+   for(int i=0;i<length;i++)
+   {
+      extract = *data;
+      for (uint8_t tempI = 8; tempI; tempI--) 
+      {
+         sum = (crc ^ extract) & 0x01;
+         crc >>= 1;
+         if (sum)
+            crc ^= 0x8C;
+         extract >>= 1;
+      }
+      data++;
+   }
+   return crc;
+}
+
 void doOneLed(bool blue,int del) {
   if (blue) BLUELED_ON
   else GREENLED_ON;
@@ -102,7 +123,7 @@ void onSerData(const uint8_t *inBuf, size_t len)
   GREENLED_ON;
   CellsSerData* cc = (CellsSerData*)inBuf;
   int nCells = (len - sizeof(CellsSerData))/sizeof(CellSerData);
-  char* p = (char*)cc;
+  uint8_t* p = (uint8_t*)cc;
   if (len > 0 && cc->crc == CRC8(p+1, len - 1)) {
     int i=0;
     while (i<nCells && cc->cells[i].used == 1)
@@ -223,12 +244,16 @@ void doSleep() {
 
 CellsSerData buf;
 void sendTest() {
-  buf.id=4;
-  buf.id++;
-  buf.bank=0;
-//  buf.crc = crc8.get_crc8(p+1, len - 1);
-  dataSer.send("Holy Fuck Satman",17);
-//  dataSer.send(p,len);
+  uint8_t* p = (uint8_t*)&buf;
+  int len = sizeof(CellsSerData) - (sizeof(CellSerData) * (MAX_CELLS - 1));
+  buf.hdr.id++;
+  buf.hdr.bank=0;
+  buf.cells[0].dump = 0;
+  buf.cells[0].used = 1;
+  buf.cells[0].v = 12;
+  buf.cells[0].t = 54;
+  buf.hdr.crc = CRC8(p+1, len - 1);
+  dataSer.send(p,len);
 }
 
 void setup() {
