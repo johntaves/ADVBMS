@@ -11,11 +11,14 @@ struct CellSerData {
   uint16_t t;
 } __attribute__((packed));
 
-struct CellsSerData {
+struct CellsHeader {
   uint8_t crc;
   uint8_t bank:2,id:6;
+} __attribute__((packed));
+
+struct CellsSerData {
+  CellsHeader hdr;
   CellSerData cells[MAX_CELLS];
 } __attribute__((packed));
 
-extern char CRC8(const char *data,int length);
 #endif

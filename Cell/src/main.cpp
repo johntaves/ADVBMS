@@ -24,8 +24,9 @@
 
 #define frame (uint8_t)0x00
 
-PacketSerial_<COBS, frame, sizeof(CellsSerData)> dataSer;
-bool doingV,wdt_hit,doneRec;
+PacketSerial_<COBS, frame, sizeof(CellsSerData)+10> dataSer;
+volatile bool wdt_hit;
+volatile uint16_t adcRead;
 uint16_t lastT,lastV;
 
 ISR(WDT_vect)
@@ -33,14 +34,17 @@ ISR(WDT_vect)
   wdt_hit = true; // this just turns off the load if we did not get woken by serial
 }
 
+ISR(USART0_START_vect)
+{
+  //Not sure why this needs to be here
+  asm("NOP");
+}
+
 ISR(ADC_vect)
 {
   uint8_t low = ADCL;
   uint16_t val = (ADCH << 8) | low;
-  // when ADC completed, take an interrupt and process result
-  if (doingV)
-    lastV = val;
-  else lastT = val;
+  adcRead = val;
 }
 
 uint8_t CRC8(const uint8_t *data,int length) 
@@ -64,15 +68,21 @@ uint8_t CRC8(const uint8_t *data,int length)
    return crc;
 }
 
-void doOneLed(bool blue,int del) {
-  if (blue) BLUELED_ON
-  else GREENLED_ON;
+void doOneLed(int led,int del) {
+  switch (led) {
+    case 0: BLUELED_ON; break;
+    case 1: GREENLED_ON; break;
+    case 2: LOAD_ON; break;
+  }
   delay(del);
-  if (blue) BLUELED_OFF
-  else GREENLED_OFF;
+  switch (led) {
+    case 0: BLUELED_OFF; break;
+    case 1: GREENLED_OFF; break;
+    case 2: LOAD_OFF; break;
+  }
 }
 
-void flashLed(bool blue,int n) {
+void flashLed(int blue,int n) {
   int del=50;
   for (int i=0;i<n-1;i++) {
     doOneLed(blue,del);
@@ -114,6 +124,8 @@ void StartADC() {
   // awake again, reading should be done, better make sure maybe the timer interrupt fired
   while (bit_is_set(ADCSRA, ADSC)) {}
 
+  delay(10);
+
   //adc_disable
   ADCSRA &= (~(1 << ADEN));
 }
@@ -122,42 +134,47 @@ void onSerData(const uint8_t *inBuf, size_t len)
 {
   GREENLED_ON;
   CellsSerData* cc = (CellsSerData*)inBuf;
-  int nCells = (len - sizeof(CellsSerData))/sizeof(CellSerData);
+  int nCells = (len - sizeof(CellsHeader))/sizeof(CellSerData);
   uint8_t* p = (uint8_t*)cc;
-  if (len > 0 && cc->crc == CRC8(p+1, len - 1)) {
-    int i=0;
-    while (i<nCells && cc->cells[i].used == 1)
-      i++;
-    if (i<nCells) {
-      cc->cells[i].used = 1;
-      if (cc->cells[i].dump == 1)
-        // set wake up to shut this off
-        LOAD_ON;
-      
-      cc->cells[i].v = lastV; // read voltage
-      cc->cells[i].t = lastT; // read temp
+  if (len > 0) {
+    if (nCells >=0 && nCells <= MAX_CELLS && cc->hdr.crc == CRC8(p+1, len - 1)) {
+      int i=0;
+      while (i<nCells && cc->cells[i].used == 1)
+        i++;
+      if (i<nCells) {
+        cc->cells[i].used = 1;
+        if (cc->cells[i].dump == 1)
+          // set wake up to shut this off
+          LOAD_ON;
+        
+        cc->cells[i].v = lastV; // read voltage
+        cc->cells[i].t = lastT; // read temp
 
-      cc->crc = CRC8(p+1, len - 1);
+        cc->hdr.crc = CRC8(p+1, len - 1);
+      }
     }
-    Serial.write(frame);
+    Serial.write(frame); // wake up next dude
+    delay(2);
+
     dataSer.send(inBuf, len);
+    delay(len);
   }
 
   GREENLED_OFF;
-  doneRec = true;
 }
 
 void getADCVals() {
   REFV_ON;
   delay(4);
 
-  doingV = true;
   ADMUXA = (0 << MUX5) | (0 << MUX4) | (1 << MUX3) | (0 << MUX2) | (0 << MUX1) | (0 << MUX0);
   StartADC(); // an interrupt will fire to catch the value;
+  lastV = adcRead;
 
-  doingV = false;
+  lastT = 0;
   ADMUXA = (0 << MUX5) | (0 << MUX4) | (0 << MUX3) | (1 << MUX2) | (0 << MUX1) | (0 << MUX0);
   StartADC();
+  lastT = adcRead;
 
   REFV_OFF;
 }
@@ -242,20 +259,6 @@ void doSleep() {
   ADCSRA = old_ADCSRA;
 }
 
-CellsSerData buf;
-void sendTest() {
-  uint8_t* p = (uint8_t*)&buf;
-  int len = sizeof(CellsSerData) - (sizeof(CellSerData) * (MAX_CELLS - 1));
-  buf.hdr.id++;
-  buf.hdr.bank=0;
-  buf.cells[0].dump = 0;
-  buf.cells[0].used = 1;
-  buf.cells[0].v = 12;
-  buf.cells[0].t = 54;
-  buf.hdr.crc = CRC8(p+1, len - 1);
-  dataSer.send(p,len);
-}
-
 void setup() {
   wdt_disable();
   wdt_reset();
@@ -270,12 +273,9 @@ void setup() {
   UCSR1B &= ~_BV(RXEN1);
   UCSR1B &= ~_BV(TXEN1);
 
-  memset(&buf,0,sizeof(buf));
   Serial.begin(2400, SERIAL_8N1);
   dataSer.setStream(&Serial);
   dataSer.setPacketHandler(&onSerData);
-  flashLed(true,3);
-  sendTest();
 }
 
 void loop() {
@@ -291,18 +291,12 @@ void loop() {
     ENABLE_SERTX;
 
     LOAD_OFF;
+    flashLed(0,2);
 
-    sendTest();
-
-    flashLed(true,2);
   } else {
-    flashLed(false,1);
+    GREENLED_ON;
     getADCVals();
-    flashLed(false,3);
-    doneRec = false;
-    while (!doneRec) {
-      delay(10);
-      dataSer.update();
-    }
+    dataSer.update();
+    GREENLED_OFF;
   }
 }
