@@ -132,7 +132,6 @@ void StartADC() {
 
 void onSerData(const uint8_t *inBuf, size_t len)
 {
-  GREENLED_ON;
   CellsSerData* cc = (CellsSerData*)inBuf;
   int nCells = (len - sizeof(CellsHeader))/sizeof(CellSerData);
   uint8_t* p = (uint8_t*)cc;
@@ -144,9 +143,8 @@ void onSerData(const uint8_t *inBuf, size_t len)
       if (i<nCells) {
         cc->cells[i].used = 1;
         if (cc->cells[i].dump == 1)
-          // set wake up to shut this off
-          LOAD_ON;
-        
+          LOAD_ON
+        else LOAD_OFF;
         cc->cells[i].v = lastV; // read voltage
         cc->cells[i].t = lastT; // read temp
 
@@ -159,8 +157,6 @@ void onSerData(const uint8_t *inBuf, size_t len)
     dataSer.send(inBuf, len);
     delay(len);
   }
-
-  GREENLED_OFF;
 }
 
 void getADCVals() {
