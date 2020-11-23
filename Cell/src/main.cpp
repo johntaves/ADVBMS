@@ -1,5 +1,5 @@
+#include "HardwareSerial.h"
 #include <Arduino.h>
-#include <PacketSerial.h>
 #include <avr/sleep.h>
 #include <avr/power.h>
 #include <avr/wdt.h>
@@ -22,9 +22,7 @@
 #define REFV_ON {PORTA |= _BV(PORTA7);}
 #define REFV_OFF {PORTA &= (~_BV(PORTA7));}
 
-#define frame (uint8_t)0x00
-
-PacketSerial_<COBS, frame, sizeof(CellsSerData)+10> dataSer;
+CellsSerData theBuff;
 volatile bool wdt_hit;
 volatile uint16_t adcRead;
 uint16_t lastT,lastV;
@@ -130,31 +128,30 @@ void StartADC() {
   ADCSRA &= (~(1 << ADEN));
 }
 
-void onSerData(const uint8_t *inBuf, size_t len)
+void processPkt(size_t len)
 {
-  CellsSerData* cc = (CellsSerData*)inBuf;
   int nCells = (len - sizeof(CellsHeader))/sizeof(CellSerData);
-  uint8_t* p = (uint8_t*)cc;
+  uint8_t* p = (uint8_t*)&theBuff;
   if (len > 0) {
-    if (nCells >=0 && nCells <= MAX_CELLS && cc->hdr.crc == CRC8(p+1, len - 1)) {
+    if (nCells >=0 && nCells <= MAX_CELLS && theBuff.hdr.crc == CRC8(p+1, len - 1)) {
       int i=0;
-      while (i<nCells && cc->cells[i].used == 1)
+      while (i<nCells && theBuff.cells[i].used == 1)
         i++;
       if (i<nCells) {
-        cc->cells[i].used = 1;
-        if (cc->cells[i].dump == 1)
+        theBuff.cells[i].used = 1;
+        if (theBuff.cells[i].dump == 1)
           LOAD_ON
         else LOAD_OFF;
-        cc->cells[i].v = lastV; // read voltage
-        cc->cells[i].t = lastT; // read temp
+        theBuff.cells[i].v = lastV; // read voltage
+        theBuff.cells[i].t = lastT; // read temp
 
-        cc->hdr.crc = CRC8(p+1, len - 1);
+        theBuff.hdr.crc = CRC8(p+1, len - 1);
       }
     }
-    Serial.write(frame); // wake up next dude
+    Serial.sendPacket(0); // wake up next dude
     delay(2);
 
-    dataSer.send(inBuf, len);
+    Serial.sendPacket(len);
     delay(len);
   }
 }
@@ -268,10 +265,7 @@ void setup() {
   // disable serial 1
   UCSR1B &= ~_BV(RXEN1);
   UCSR1B &= ~_BV(TXEN1);
-
-  Serial.begin(2400, SERIAL_8N1);
-  dataSer.setStream(&Serial);
-  dataSer.setPacketHandler(&onSerData);
+  Serial.begin((uint8_t*)&theBuff,sizeof(theBuff), 2400, SERIAL_8N1);
 }
 
 void loop() {
@@ -288,11 +282,15 @@ void loop() {
 
     LOAD_OFF;
     flashLed(0,2);
-
   } else {
+    uint8_t len;
     GREENLED_ON;
     getADCVals();
-    dataSer.update();
+    len = Serial.waitForPacket(500);
+    if (len && !Serial.didFault())
+      processPkt(len);
+    else flashLed(2,4);
+    Serial.clear();
     GREENLED_OFF;
   }
 }
