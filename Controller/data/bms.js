@@ -10,7 +10,8 @@ $(function () {
         event.preventDefault();
         }
     );
-    $("#settingsMenu").on('click',getSettings);
+    $("#sensMenu").on('click',getSettings);
+    $("#limitsMenu").on('click',getSettings);
     $("#battMenu").on('click',getSettings);
     $("#netMenu").on('click',getSettings);
     showContent("cell");
@@ -89,6 +90,37 @@ function initCells(nBanks,nCells) {
         }
     }
     myChart.update();
+    $("[cellval]").remove();
+    for (var rel=0;rel<nCells;rel++) {
+        var temp = $("#tempC").clone();
+        temp.attr({id: "tempC"+rel});
+        temp.find(".t").text('#'+rel+': T mV');
+        temp.attr({cellval: true});
+        temp.insertBefore("#tempC");
+        var theA = temp.find("a");
+        theA.attr("cell",rel);
+        theA.click(function () {
+            var r = $(this).attr("cell");
+            $.ajax({
+                type: "POST",
+                url: "/dump",
+                data: { cell: r},
+                dataType:'json',
+                success: function (data) {
+                    var r = data.cell;
+                    if (data.val == "off")
+                        $("#tempC"+r+" .v").addClass("manoff");
+                    else $("#tempC"+r+" .v").removeClass("manoff");
+                    $("#savesuccess").show().delay(2000).fadeOut(500);
+                },
+                error: function (data) {
+                    $("#saveerror").show().delay(2000).fadeOut(500);
+                }
+            });
+            return false;
+         });
+        temp.show();
+    }
 }
 
 function getSettings() {
@@ -111,6 +143,15 @@ function getSettings() {
             $("#PVShuntUOhms").val(data.PVShuntUOhms);
             $("#nBanks").val(data.nBanks);
             $("#nCells").val(data.nCells);
+            
+            $.each(data.tempSettings,function (index,value) {
+                $("#bCoef"+index).val(value.bCoef);
+                $("#addr"+index).val(value.addr);
+                $("#mul"+index).val(value.mul);
+                $("#div"+index).val(value.div);
+                $("#range"+index).val(value.range);
+            });
+            $("#resPwrMS").val(data.resPwrMS);
 
             $("#CurSOC").val('');
             $("#PollFreq").val(data.PollFreq);
@@ -119,7 +160,8 @@ function getSettings() {
             $.each(data.limitSettings, function (index, value) {
                 $("#" + index).val(value);
             });
-            $("#useex").prop("checked", data.useex);
+            $("#useTempC").prop("checked", data.useTempC);
+            $("#useCellC").prop("checked", data.useCellC);
 
             $.each(data.relaySettings, function (index, value) {
                 $("#relayName" + index).val(value.name);
@@ -153,6 +195,7 @@ function queryBMS() {
 
         var d = new Date(1000 * data.now);
         $("#timenow").html(d.toLocaleString());
+        $("#version").html(data.version);
 
         $("#cellvolt").hide();
         if (data.maxCellVState || data.minCellVState)
@@ -208,6 +251,11 @@ function queryBMS() {
             $("#temp2").show();
             $("#temp2 .v").html(data.temp2);
         }
+        $('#fsr .v').html(data.fsr);
+        $('#cur0').text(data.rawTemp1);
+        $('#cur1').text(data.rawTemp2);
+        $('#cur2').text(data.fsr);
+
         $("#uptime .v").html(data.uptime);
 
         if (data.nocells == true) {
@@ -221,6 +269,7 @@ function queryBMS() {
 
         if (data.nCells !== undefined) {
             initCells(data.nBanks,data.nCells);
+
         }
         if (data.bank)
         $.each(data.bank, function (index, value) { // does not handle multiple banks, multiple charts are needed
@@ -232,7 +281,12 @@ function queryBMS() {
                 data.push(value.v / 1000.0);
                 if (data.length > 20)
                     data.shift();
-            }); 
+                var tv = value.t + ' ' + value.v;
+                var cell = $("#tempC"+index+" .v");
+                cell.text(tv);
+                if (value.dumping) cell.addClass("dumping");
+                else cell.removeClass("dumping");
+            });
             myChart.update();
         });
     }).fail(function () {
@@ -298,6 +352,20 @@ function Setup() {
     }
     $("#limit").remove();
     
+    //Duplicate the template and then kill it.
+    var TempNames = ['Temp','Temp 1','Cell Temp'];
+    for (var tn=0;tn<TempNames.length;tn++) {
+        var temp = $("#Temps").clone();
+        temp.attr({id: "Temps"+tn});
+        var t = temp.find("[for='bCoef']");
+        t.text(TempNames[tn]+t.text());
+        $.each(['bCoef','addr','mul','div','range','cur'],function (index,value) {
+            temp.find('#'+value).attr({id: value+tn, name: value+tn});
+            temp.find("[for='"+value+"']").attr({for: value+tn});
+        });
+        temp.insertBefore("#Temps");
+    }
+    $("#Temps").remove();
     //Duplicate the template and then kill it.
     for (var rel=0;rel<RELAY_TOTAL;rel++) {
         var temp = $("#relay").clone();

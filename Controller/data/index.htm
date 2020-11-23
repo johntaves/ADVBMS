@@ -15,6 +15,7 @@
             <div>
                 <div id="temp1" class="stat"><div class="x t">Temp 1</div><a href="" class="x v"></a></div>
                 <div id="temp2" class="stat"><div class="x t">Temp 2</div><a href="" class="x v"></a></div>
+                <div id="fsr" class="stat"><div class="x t">Force</div><div href="" class="x v"></div></div>
                 <div id="celltemp" class="stat"><div class="x t">Cell T</div><div class="x v highlight"></div></div>
                 <div id="cellvolt" class="stat"><div class="x t">Cell V</div><div class="x v highlight"></div></div>
                 <div id="packvolts" class="stat"><div class="x t">Pack (V)</div><div class="x v"></div></div>
@@ -22,30 +23,35 @@
                 <div id="pvcurrent" class="stat"><div class="x t">PV (A)</div><div class="x v"></div></div>
                 <div id="loadcurrent" class="stat"><div class="x t">Load (A)</div><div class="x v"></div></div>
                 <div id="soc" class="stat"><div class="x t">SOC</div><div class="x v"></div></div>
+                <div class="stat" id="timenow"></div>
             </div>
             <div>
-                <div id="pkts" class="stat"><div class="x t">Pkts: sent/rec err dur</div><div class="x v"></div></div>
+                <div id="pkts" class="stat"><div class="x t">Pkts: sent err dur</div><div class="x v"></div></div>
                 <div id="uptime" class="stat"><div class="x t">Up Time</div><div class="x v"></div></div>
                 <div id="relayStatus" class="stat"><div class="x t">J1</div><a href="" class="x v"></a></div>
+                <div class="stat" id="version"></div>
             </div>
-        </div>
-        <div id="menu">
-            <a id="cellsMenu" href="cells">Cells</a>
-            <a id="settingsMenu" href="settings">Settings</a>
-            <a id="battMenu" href="batt">Battery</a>
-            <a id="netMenu" href="net">Network</a>
         </div>
         <div id='nocells' class='error'>Cells are not responding</div>
         <div id='nocontroller' class='error'>Controller is not responding</div>
         <div id='saveerror' class='error'>Failed to save settings</div>
         <div id='savesuccess' class='success'>Settings saved</div>
         <div id='debuginfo'></div>
+        <div id="menu">
+            <a id="cellsMenu" href="cells">Cells</a>
+            <a id="limitsMenu" href="limits">Limits</a>
+            <a id="battMenu" href="batt">Battery</a>
+            <a id="sensMenu" href="sens">Sensors</a>
+            <a id="netMenu" href="net">Network</a>
+        </div>
     </div>
     <div id="content">
         <div id="cells">
-            <canvas id="cellCan" width="400" height="400"></canvas>
+            <div id="tempRow"><div id="tempC" style="display: none;" class="stat"><div class="x t">Temp</div><a class="x v"></a></div></div>
+            <div id="cellDiv">
+            <canvas id="cellCan" ></canvas></div>
         </div>
-        <div id="settings">
+        <div id="limits">
             <form method="POST" action="saverules" autocomplete="off">
                 <div id="limit">
                 <label for="limitx"></label>
@@ -62,8 +68,37 @@
                             <input type="number" min="0" max="100" step="1" name="relayRec" id="relayRec" value="40" required="">
                     </div>
                 </div>
-                <label for="useex">Use external cell temperature: </label><input id="useex" name="useex" type="checkbox" />
+                <div>
+                <label for="useTempC">Use temperature sensor: </label><input id="useTempC" name="useTempC" type="checkbox" />
+                <label for="useCellC">Use cell temperatures: </label><input id="useCellC" name="useCellC" type="checkbox" />
+                If you turn off both of these, you'd better make sure it won't freeze.
+                </div>
                 <div class="buttonhold"><input type="submit" value="Save" /></div>
+            </form>
+        </div>
+        <div id="sens">
+            <form method="POST" action="savesens" autocomplete="off">
+                <div class="settings">
+                    <div id="Temps">
+                        <label class="field" for="bCoef">: B Constant:</label>
+                        <input type="number" name="bCoef" id="bCoef" value="" required="" maxlength="5" />
+                        <label class="rec" for="addr">Offset:</label>
+                        <input type="number" name="addr" id="addr" value="" required="" maxlength="5" />
+                        <label class="rec" for="mul">Mul:</label>
+                        <input type="number" name="mul" id="mul" value="" required="" maxlength="5" />
+                        <label class="rec" for="div">Div:</label>
+                        <input type="number" name="div" id="div" value="" required="" maxlength="5" />
+                        <label class="rec" for="range">Range:</label>
+                        <input type="number" name="range" id="range" value="" required="" maxlength="5" />
+                        <label class="rec" for="cur">Cur:</label>
+                        <span id="cur"></span>
+                    </div>
+                    <div>
+                        <label class="field" for="resPwrMS">Resistor Pwr On Time (ms):</label>
+                        <input type="number" name="resPwrMS" id="resPwrMS" value="" required="" maxlength="5" />
+                    </div>
+                    <div class="buttonhold"><input type="submit" value="Save Capacity"/></div>
+                </div>
             </form>
         </div>
         <div id="batt">

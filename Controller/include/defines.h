@@ -19,7 +19,6 @@
 struct WiFiSettings {
   char ssid[33];
   char password[64];
-  bool apMode;
 };
 
 enum {
@@ -48,13 +47,25 @@ struct EmailSettings {
   uint16_t senderPort;
 };
 
+enum {
+  Temp1,Temp2,TempC,MAX_TEMPS
+};
+
+struct ADCTSet {
+  uint16_t bCoef,addr,mul,div,range;
+};
+
+struct SensSettings {
+  ADCTSet temps[MAX_TEMPS];
+};
+
 struct BattSettings {
   uint16_t limits[2][2][2][2];
   uint16_t BattAH,MaxAmps,PVMaxAmps;
   uint32_t ShuntUOhms,PVShuntUOhms;
   RelaySettings relays[RELAY_TOTAL];
   char errorEmail[128];
-  bool doCelsius,useex;
+  bool doCelsius,useCellC,useTempC;
   uint16_t Avg,ConvTime;
   uint32_t PollFreq;
   uint8_t nBanks,nCells;
@@ -63,6 +74,8 @@ struct BattSettings {
 #define EEPROM_WIFI 0
 #define EEPROM_EMAIL (EEPROM_WIFI+sizeof(WiFiSettings)+2)
 #define EEPROM_BATT (EEPROM_EMAIL+sizeof(EmailSettings)+2)
+#define EEPROM_SENS (EEPROM_BATT+sizeof(BattSettings)+2)
+#define EEPROMSize (EEPROM_SENS+sizeof(SensSettings)+2)
 
 struct CellInfo {
   uint16_t rawV,rawT,v,t;
