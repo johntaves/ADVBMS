@@ -2,13 +2,16 @@
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <EEPROM.h>
+#include <HTTPClient.h>
 #include <INA.h>
+#include <ArduinoOTA.h>
 #include "ArduinoJson.h"
 #include "ESP32_MailClient.h"
 #include <Wire.h>
 //#include <EasyBuzzer.h>
 #include <PacketSerial.h>
 #include <time.h>
+#include <Ticker.h>
 #include "defines.h"
 #include "SerData.h"
 
@@ -20,17 +23,36 @@
 #define FSR GPIO_NUM_32
 #define SPEAKER GPIO_NUM_19
 
+// poll the PV current every 2 secs
+#define POLLPV 2000
+// check everything every 3 secs
+#define CHECKSTATUS 2000
+// shut everything off if status has not happened within 2 secs of when it should
+#define WATCHDOGSLOP 10
+
 // cell v adjust
 // data dump
 // ding server
 // adjustable cell history
 // cell dump safety, stop if cell gets low, show dump status
 // break out battsets
+// secure the AP 
+// max amps cut off feature
+// SoC and Amps for on/off
+// second thread to check status
+// turn off things if status is not getting called
+// improve the SoC allow to run logic. Make the code bad, and see if the charge/loads go off
+// email did not work going from unset to sent. A reboot seemed to help
+// display accumulated error
 
 bool cellsTimedOut,emailSetup=false,loadsOff = false,chgOff = false,resPwrOn=false;
 uint8_t sentID=0;
 uint32_t sentMillis,receivedMillis=0,lastRoundMillis=0,numSent=0,failedSer=0;
 uint16_t resPwrMS=10;
+HTTPClient http;
+Ticker watchDog;
+atomic_flag taskRunning(0);
+bool OTAInProg = false;
 
 struct CellData {
   uint16_t v,t,rawV,rawT;
@@ -62,9 +84,9 @@ String emailRes = "";
 
 INA_Class         INA;
 int INADevs;
+int watchDogHits;
 uint16_t rawTemp1,rawTemp2,rawFSR;
 int stateOfCharge,milliRolls,curTemp1,curTemp2;
-int browserNBanks=-1,browserNCells=-1;
 int32_t lastMicroAmps,lastAdjMillAmpHrs = 0,lastPVMicroAmps=0;
 uint32_t lastMillis=0,lastShuntMillis;
 int64_t milliAmpMillis,battMilliAmpMillis;
@@ -99,6 +121,50 @@ uint8_t CRC8(const uint8_t *data,int length)
    return crc;
 }
 
+void InitOTA() {
+    // Port defaults to 3232
+  // ArduinoOTA.setPort(3232);
+
+  // Hostname defaults to esp3232-[MAC]
+  // ArduinoOTA.setHostname("myesp32");
+
+  // No authentication by default
+  // ArduinoOTA.setPassword("admin");
+
+  // Password can be set with it's md5 value as well
+  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
+  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
+
+  ArduinoOTA
+    .onStart([]() {
+      String type;
+      if (ArduinoOTA.getCommand() == U_FLASH)
+        type = "sketch";
+      else // U_SPIFFS
+        type = "filesystem";
+
+      // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+      OTAInProg = true;
+      Serial.println("Start updating " + type);
+    })
+    .onEnd([]() {
+      OTAInProg = false;
+      Serial.println("\nEnd");
+    })
+    .onProgress([](unsigned int progress, unsigned int total) {
+      Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+    })
+    .onError([](ota_error_t error) {
+      Serial.printf("Error[%u]: ", error);
+      if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+      else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+      else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+      else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+      else if (error == OTA_END_ERROR) Serial.println("End Failed");
+    });
+
+  ArduinoOTA.begin();
+}
 void getAmps() {
   lastMicroAmps = -INA.getBusMicroAmps(0);
   uint32_t thisMillis = millis();
@@ -209,6 +275,14 @@ void doAHCalcs() {
   numAveAdj++;
   lastAdjMillAmpHrs = (int32_t)(curAdjMilliAmpMillis / ((int64_t)1000 * 60 * 60));
   curAdjMilliAmpMillis = 0;
+}
+
+void shutOffRelays() {
+  for (int i=0;i<RELAY_TOTAL;i++) {
+    digitalWrite(relayPins[i], LOW);
+    previousRelayState[i] = LOW;
+  }
+  watchDogHits++;
 }
 
 void checkStatus()
@@ -362,13 +436,13 @@ void checkStatus()
       relay[y] = previousRelayState[y]; // don't change it because we might be in the SOC trip/rec area
       if (rp->type == Relay_Load) {
         if (loadsOff || (rp->doSOC && (!stateOfChargeValid || stateOfCharge < rp->trip))
-             || (cellsTimedOut && (!stateOfChargeValid || (stateOfCharge < rp->trip && rp->trip > 0))))
+             || (cellsTimedOut && (!stateOfChargeValid || !rp->trip || stateOfCharge < rp->trip)))
           relay[y] = LOW; // turn if off
         else if (!rp->doSOC || (rp->doSOC && stateOfChargeValid && stateOfCharge > rp->rec))
           relay[y] = HIGH; // turn it on
       } else {
         if (chgOff || (rp->doSOC && (!stateOfChargeValid || stateOfCharge > rp->trip))
-            || (cellsTimedOut && (!stateOfChargeValid || (stateOfCharge > rp->trip && rp->trip > 0))))
+            || (cellsTimedOut && (!stateOfChargeValid || !rp->trip || stateOfCharge > rp->trip)))
           relay[y] = LOW; // off
         else if (!rp->doSOC || (rp->doSOC && stateOfChargeValid && stateOfCharge < rp->rec))
           relay[y] = HIGH; // on
@@ -383,6 +457,7 @@ void checkStatus()
       previousRelayState[n] = relay[n];
     }
   }
+  watchDog.once_ms(CHECKSTATUS+WATCHDOGSLOP,shutOffRelays);
   doPollCells();
 }
 
@@ -451,10 +526,11 @@ void setINAs() {
   INA.setAveraging(battSets.Avg,1);
 }
 
-void sendSuccess(AsyncWebServerRequest *request) { 
+void sendSuccess(AsyncWebServerRequest *request,const char* mess=NULL,bool suc=true) { 
   AsyncResponseStream *response = request->beginResponseStream("application/json");
   DynamicJsonDocument doc(100);
-  doc["success"] = true;
+  doc["success"] = suc;
+  doc["errormess"] = mess;
   serializeJson(doc, *response);
   request->send(response);
 }
@@ -464,12 +540,15 @@ void settings(AsyncWebServerRequest *request){
       request->beginResponseStream("application/json");
   DynamicJsonDocument doc(4096);
   JsonObject root = doc.to<JsonObject>();
+  root["apName"] = wifiSets.apName;
   root["email"] = eSets.email;
   root["senderEmail"] = eSets.senderEmail;
   root["senderSubject"] = eSets.senderSubject;
   root["senderServer"] = eSets.senderServer;
   root["senderSubject"] = eSets.senderSubject;
   root["senderPort"] = eSets.senderPort;
+  root["logEmail"] = eSets.logEmail;
+  root["doLogging"] = eSets.doLogging;
  
   root["Avg"] = battSets.Avg;
   root["PollFreq"] = battSets.PollFreq;
@@ -539,12 +618,6 @@ int fromCel(int c) {
   return c*9/5+32;
 }
 
-char* milliToStr(int32_t val) {
-  int32_t v = val/10;
-  snprintf(spb,sizeof(spb),"%s%d.%02d",(v < 0 ?"-":""),abs(v)/100,(abs(v) % 100));
-  return spb;
-}
-
 void saveOff(AsyncWebServerRequest *request) {
   if (request->hasParam("relay", true)) {
     int r = request->getParam("relay", true)->value().toInt();
@@ -577,13 +650,8 @@ void dump(AsyncWebServerRequest *request) {
   } else request->send(500, "text/plain", "Missing parameters");
 }
 
-void status(AsyncWebServerRequest *request){
-  AsyncResponseStream *response =
-      request->beginResponseStream("application/json");
-
-  DynamicJsonDocument doc(2048);
-  JsonObject root = doc.to<JsonObject>();
- 
+void fillStatusDoc(JsonVariant root) {
+  
   uint32_t upsecs = (milliRolls * 4294967ul) + (millis()/1000ul);
   int days = upsecs / (24ul*60*60);
   upsecs = upsecs % (24ul*60*60);
@@ -596,7 +664,8 @@ void status(AsyncWebServerRequest *request){
   time_t now;
   if (time(&now))
     root["now"]=now;
-  root["version"] = "V: 0.5";
+  root["version"] = "V: 0.6";
+  root["watchDogHits"] = watchDogHits;
   root["RELAY_TOTAL"] = RELAY_TOTAL;
   for (int i=0;i<RELAY_TOTAL;i++) {
     char dodad[16];
@@ -610,12 +679,9 @@ void status(AsyncWebServerRequest *request){
     root[dodad] = battSets.relays[i].off == 1 ? "off" : "on";
   }
 
-//  root["debuginfo"] = debugstr;
-
-  root["packcurrent"] = milliToStr(lastMicroAmps/1000);
-  root["packvolts"] = milliToStr(lastPackMilliVolts);
-  root["pvcurrent"] = milliToStr(lastPVMicroAmps/1000);
-  root["loadcurrent"] = milliToStr( (lastPVMicroAmps - lastMicroAmps)/1000);
+  root["packcurrent"] = lastMicroAmps/1000;
+  root["packvolts"] = lastPackMilliVolts;
+  root["pvcurrent"] = lastPVMicroAmps/1000;
   snprintf(spb,sizeof(spb),"%d%%",stateOfCharge);
   root["soc"] = spb;
   root["socvalid"] = stateOfChargeValid;
@@ -637,31 +703,32 @@ void status(AsyncWebServerRequest *request){
   snprintf(spb,sizeof(spb),"%d %d %dms",numSent,failedSer,lastRoundMillis);
   root["pkts"] = spb;
 
-  if (browserNBanks != battSets.nBanks || browserNCells != battSets.nCells) {
-    root["nBanks"] = battSets.nBanks;
-    root["nCells"] = battSets.nCells;
-    browserNBanks = battSets.nBanks;
-    browserNCells = battSets.nCells;
-  }
+  root["nBanks"] = battSets.nBanks;
+  root["nCells"] = battSets.nCells;
 
-  JsonArray bankArray = root.createNestedArray("bank");
+  JsonArray data = root.createNestedArray("cells");
   for (uint8_t bank = 0; bank < battSets.nBanks; bank++) {
-    JsonArray data = bankArray.createNestedArray();
 
     for (uint8_t i = 0; i < battSets.nCells; i++) {
       JsonObject cell = data.createNestedObject();
+      cell["b"] = bank;
+      cell["c"] = i;
       cell["v"] = cells[bank][i].v;
       cell["t"] = cells[bank][i].t;
-      cell["dumping"] = cells[bank][i].dumping;
+      cell["d"] = cells[bank][i].dumping;
     }
   }
+}
 
+void status(AsyncWebServerRequest *request){
+//Serial.printf("SP: %d, C: %d H: %d\n",uxTaskPriorityGet(NULL),xPortGetCoreID(),uxTaskGetStackHighWaterMark(NULL));
+  AsyncResponseStream *response =
+      request->beginResponseStream("application/json");
+
+  DynamicJsonDocument doc(2048);
+  fillStatusDoc(doc.to<JsonVariant>());
   serializeJson(doc, *response);
   request->send(response);
-}
-void firstStatus(AsyncWebServerRequest *request){
-  browserNBanks = -1;
-  return status(request);
 }
 
 void saverules(AsyncWebServerRequest *request) {
@@ -733,6 +800,12 @@ void saveemail(AsyncWebServerRequest *request){
     request->getParam("senderSubject", true)->value().toCharArray(eSets.senderSubject,sizeof(eSets.senderSubject));
   if (request->hasParam("senderPort", true))
     eSets.senderPort = request->getParam("senderPort", true)->value().toInt();
+  if (request->hasParam("logEmail", true))
+    request->getParam("logEmail", true)->value().toCharArray(eSets.logEmail,sizeof(eSets.logEmail));
+  if (request->hasParam("logPW", true))
+    request->getParam("logPW", true)->value().toCharArray(eSets.logPW,sizeof(eSets.logPW));
+  eSets.doLogging = request->hasParam("doLogging", true) && request->getParam("doLogging", true)->value().equals("on");
+
   writeEE((uint8_t*)&eSets,sizeof(eSets),EEPROM_EMAIL);
   doEmailSettings();
   sendSuccess(request);
@@ -762,6 +835,9 @@ void onconnect(WiFiEvent_t event, WiFiEventInfo_t info) {
       Serial.println("Begin Server");
       server.begin();
       configTime(0,0,"pool.ntp.org");
+      Serial.println("Connecting http");
+      http.begin("http://advbms.com/PostData.aspx");
+      http.addHeader("Content-Type", "application/json");
       break;
     default: break;
   }
@@ -777,7 +853,12 @@ void WiFiInit(bool doSTA) {
   else WiFi.mode(WIFI_AP);
   WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
   WiFi.onEvent(onconnect, WiFiEvent_t::SYSTEM_EVENT_MAX);
-  WiFi.softAP("ADVBMS_CONTROLLER");
+  Serial.print("WTF:");
+  Serial.println(wifiSets.apName);
+  if (strlen(wifiSets.apName)) {
+    Serial.println("OK");
+    WiFi.softAP(wifiSets.apName,wifiSets.apPW,1,1);
+  } else WiFi.softAP("ADVBMS_CONTROLLER");
   if (doSTA && wifiSets.ssid[0] != 0)
     WiFi.begin(wifiSets.ssid,wifiSets.password);
 }
@@ -787,6 +868,15 @@ void kickwifi(AsyncWebServerRequest *request) {
 }
 
 void savewifi(AsyncWebServerRequest *request){
+  if (request->hasParam("apName", true))
+    request->getParam("apName", true)->value().toCharArray(wifiSets.apName,sizeof(wifiSets.apName));
+  if (request->hasParam("apPW", true))
+    request->getParam("apPW", true)->value().toCharArray(wifiSets.apPW,sizeof(wifiSets.apPW));
+  if (strlen(wifiSets.apPW) && strlen(wifiSets.apPW) < 8) {
+    sendSuccess(request,"apPW too short, 8 chars or none",false);
+    return;
+  }
+
   if (request->hasParam("ssid", true))
     request->getParam("ssid", true)->value().toCharArray(wifiSets.ssid,sizeof(wifiSets.ssid));
   if (request->hasParam("password", true))
@@ -921,7 +1011,6 @@ void startServer() {
   server.on("/savesens", HTTP_POST, savesens);
   server.on("/saverules", HTTP_POST, saverules);
   server.on("/settings", HTTP_GET, settings);
-  server.on("/status1", HTTP_GET, firstStatus);
   server.on("/status", HTTP_GET, status);
 
   server.serveStatic("/static", SPIFFS, "/static").setLastModified("Mon, 20 Jun 2016 14:00:00 GMT");
@@ -980,6 +1069,24 @@ void initBattSets() {
   }
 }
 
+void sendStatus(void* unused) {
+//Serial.printf("XP: %d, C: %d H: %d\n",uxTaskPriorityGet(NULL),xPortGetCoreID(),uxTaskGetStackHighWaterMark(NULL));
+  uint32_t st = millis();
+  DynamicJsonDocument doc(2000);
+  fillStatusDoc(doc.to<JsonVariant>());
+  doc["userid"] = 1;
+  String json;
+  serializeJson(doc, json);
+//Serial.println(json);
+  http.POST(json);
+  String res = http.getString();
+  if (res != "OK")
+    Serial.println(res);
+  Serial.println(millis()-st);
+  taskRunning.clear();
+  vTaskDelete(NULL);
+}
+
 void setup() {
   Serial.begin(9600);
   Serial2.begin(2400, SERIAL_8N1); // Serial for comms to modules
@@ -993,6 +1100,8 @@ void setup() {
   if (!readEE((uint8_t*)&wifiSets, sizeof(wifiSets), EEPROM_WIFI)) {
     wifiSets.ssid[0] = 0;
     wifiSets.password[0] = 0;
+    wifiSets.apName[0] = 0;
+    wifiSets.apPW[0] = 0;
   }
   WiFiInit(true);
   //EasyBuzzer.setPin(SPEAKER);
@@ -1004,6 +1113,9 @@ void setup() {
     eSets.senderPort = 587;
     eSets.senderPW[0] = 0;
     eSets.senderSubject[0] = 0;
+    eSets.logEmail[0] = 0;
+    eSets.logPW[0] = 0;
+    eSets.doLogging = false;
   } else doEmailSettings();
 
   if (!readEE((uint8_t*)&battSets,sizeof(battSets),EEPROM_BATT))
@@ -1023,7 +1135,8 @@ void setup() {
   pinMode(RESISTOR_PWR, OUTPUT);
   for (int i=0;i<RELAY_TOTAL;i++)
     pinMode(relayPins[i],OUTPUT);
-
+  shutOffRelays();
+  watchDogHits = 0;
   GenUUID();
 
   INADevs = INA.begin(battSets.MaxAmps, battSets.ShuntUOhms);
@@ -1035,32 +1148,27 @@ void setup() {
   smtpData.setSendCallback(emailCallback);
   startServer();
   doPollCells();
+  InitOTA();
 }
 
 void loop() {
-  uint32_t curMillis = millis();
-  if (lastMillis > curMillis) milliRolls++;
-  lastMillis = curMillis; // for uptime to continue after 50 days
+  if (lastMillis > millis()) milliRolls++;
+  lastMillis = millis(); // for uptime to continue after 50 days
 
-  if (sendEmail && emailSetup) {
-    if (!MailClient.sendMail(smtpData))
-      Serial.println("Error sending Email, " + MailClient.smtpErrorReason());
-    sendEmail = false;
-  }
   if (INADevs > 0) {
-    if ((curMillis - shuntPollMS) > battSets.PollFreq) {
+    if ((millis() - shuntPollMS) > battSets.PollFreq) {
       getAmps();
-      shuntPollMS = curMillis;
+      shuntPollMS = millis();
     }
-    if (INADevs > 1 && (curMillis - pvPollMS) > 2000) {
+    if (INADevs > 1 && (millis() - pvPollMS) > POLLPV) {
       lastPVMicroAmps = INA.getBusMicroAmps(1);
-      pvPollMS = curMillis;
+      pvPollMS = millis();
     }
   }
-  if (!resPwrOn && (!resPwrMS || (curMillis - statusMS) > (3000-resPwrMS))) {
+  if (!resPwrOn && (!resPwrMS || (millis() - statusMS) > (CHECKSTATUS-resPwrMS))) {
     resPwrOn = true;
     digitalWrite(RESISTOR_PWR,HIGH); // get current flowing through resistors
-  } else if ((!resPwrMS || resPwrOn) && (curMillis - statusMS) > 3000) {
+  } else if ((!resPwrMS || resPwrOn) && (millis() - statusMS) > CHECKSTATUS) {
     rawTemp1 = analogRead(TEMP1);
     curTemp1 = calcStein(rawTemp1,&sensSets.temps[Temp1]);
     rawTemp2 = analogRead(TEMP2);
@@ -1071,13 +1179,22 @@ void loop() {
       resPwrOn = false;
     }
     checkStatus();
-    statusMS = curMillis;
+    if (!OTAInProg && !taskRunning.test_and_set() && eSets.doLogging && strlen(eSets.logEmail))
+      xTaskCreate(sendStatus,"sendStatus",2000,NULL,0,NULL);
+    statusMS = millis();
   }
+
   //EasyBuzzer.update();
   dataSer.update();
-  if ((curMillis - ledFlashMS) > 2000) {
+  if ((millis() - ledFlashMS) > 2000) {
     digitalWrite(BLUE_LED,ledState ? LOW : HIGH);
     ledState = !ledState;
-    ledFlashMS = curMillis;
+    ledFlashMS = millis();
   }
+  if (sendEmail && emailSetup) {
+    if (!MailClient.sendMail(smtpData))
+      Serial.println("Error sending Email, " + MailClient.smtpErrorReason());
+    sendEmail = false;
+  }
+  ArduinoOTA.handle();
 }

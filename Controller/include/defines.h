@@ -19,6 +19,8 @@
 struct WiFiSettings {
   char ssid[33];
   char password[64];
+  char apName[32];
+  char apPW[32];
 };
 
 enum {
@@ -39,12 +41,15 @@ struct RelaySettings {
 };
 
 struct EmailSettings {
-  char email[256];
-  char senderEmail[256];
+  char email[64];
+  char senderEmail[64];
   char senderPW[64];
   char senderServer[64];
   char senderSubject[64];
+  char logEmail[64];
+  char logPW[32];
   uint16_t senderPort;
+  bool doLogging;
 };
 
 enum {

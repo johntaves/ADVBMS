@@ -24,6 +24,7 @@
                 <div id="loadcurrent" class="stat"><div class="x t">Load (A)</div><div class="x v"></div></div>
                 <div id="soc" class="stat"><div class="x t">SOC</div><div class="x v"></div></div>
                 <div class="stat" id="timenow"></div>
+                <div id="watchDogHits" class="stat"><div class="x t">Watch Dog Hits</div><div class="x v"></div></div>
             </div>
             <div>
                 <div id="pkts" class="stat"><div class="x t">Pkts: sent err dur</div><div class="x v"></div></div>
@@ -36,7 +37,6 @@
         <div id='nocontroller' class='error'>Controller is not responding</div>
         <div id='saveerror' class='error'>Failed to save settings</div>
         <div id='savesuccess' class='success'>Settings saved</div>
-        <div id='debuginfo'></div>
         <div id="menu">
             <a id="cellsMenu" href="cells">Cells</a>
             <a id="limitsMenu" href="limits">Limits</a>
@@ -160,21 +160,31 @@
         <div id="net">
             <form method="POST" action="saveemail" autocomplete="off">
                 <div><label for="email">Alert Email:</label>
-                <input name="email" type="text"/></div>
+                    <input name="email" type="text"/></div>
                 <div><label for="senderEmail">Sender Email:</label>
-                <input name="senderEmail" type="text"/></div>
+                    <input name="senderEmail" type="text"/></div>
                 <div><label for="senderPW">Password:</label>
-                <input name="senderPW" type="password"/></div>
+                    <input name="senderPW" type="password"/></div>
                 <div><label for="senderServer">Server:</label>
-                <input name="senderServer" type="text"/></div>
+                    <input name="senderServer" type="text"/></div>
                 <div><label for="senderPort">Port:</label>
-                <input name="senderPort" type="number"/></div>
+                    <input name="senderPort" type="number"/></div>
                 <div><label for="senderSubject">Subject:</label>
-                <input name="senderSubject" type="text"/></div>
+                    <input name="senderSubject" type="text"/></div>
+                <div><label for="logEmail">Logging Email:</label>
+                    <input name="logEmail" type="text"/></div>
+                <div><label for="logPW">Logging Password:</label>
+                    <input name="logPW" type="password"/></div>
+                <div><label for="doLogging">Enable Logging:</label>
+                    <input name="doLogging" type="checkbox"/></div>
                 <div class="buttonhold"><input type="submit" value="Save settings" /></div>
                 <div class="buttonhold"><button id="email">Test EMail</button></div>
             </form>
             <form method="POST" action="savewifi" autocomplete="off">
+                <div><label for="apName">This WiFi Name:</label>
+                    <input name="apName" type="text"/></div>
+                <div><label for="apPW">This WiFi PW:</label>
+                    <input name="apPW" type="text"/></div>
                 <div>
                     <label for="ssid">Network Name:</label>
                     <input name="ssid" type="text"/><button id="kickWifi">Retry</button>

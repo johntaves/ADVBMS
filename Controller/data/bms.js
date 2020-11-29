@@ -20,7 +20,8 @@ $(function () {
     queryBMS();
 });
 
-var RELAY_TOTAL = 6;
+var RELAY_TOTAL=0;
+var nCells=0,nBanks=0;
 var myChart,config;
 
 function showContent(c) {
@@ -77,7 +78,7 @@ function initChart() {
 
 var colors = [ '#e6194B', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#42d4f4', '#f032e6', '#fabed4', '#469990', '#dcbeff', '#9A6324', '#fffac8', '#800000', '#aaffc3', '#000075', '#a9a9a9', '#ffffff', '#000000' ];
 
-function initCells(nBanks,nCells) {
+function initCells() {
     config.data.labels = [];
     config.data.datasets = [];
     for (var i=0;i<nCells;i++) {
@@ -126,11 +127,15 @@ function initCells(nBanks,nCells) {
 function getSettings() {
     $.getJSON("settings",
         function (data) {
+            $("input[name='apName']").val(data.apName);
             $("input[name='email']").val(data.email);
             $("input[name='senderEmail']").val(data.senderEmail);
             $("input[name='senderServer']").val(data.senderServer);
             $("input[name='senderPort']").val(data.senderPort);
             $("input[name='senderSubject']").val(data.senderSubject);
+            $("input[name='logEmail']").val(data.logEmail);
+            $("input[name='doLogging']").prop("checked", data.doLogging);
+
             $("#Avg").val(data.Avg);
             $("#ConvTime").val(data.ConvTime);
             $("#BattAH").val(data.BattAH);
@@ -176,10 +181,12 @@ function getSettings() {
     return true;
 }
 
-var first = true;
 function queryBMS() {
-    $.getJSON("status" + (first ? "1" : ""), function (data) {
-        first = false;
+    $.getJSON("status", function (data) {
+        if (data.RELAY_TOTAL && !RELAY_TOTAL) {
+            setupRelays(data.RELAY_TOTAL);
+            RELAY_TOTAL = data.RELAY_TOTAL;
+        }
         for (var i=0;i<RELAY_TOTAL;i++) {
             var rn = data["relayName"+i];
             if (rn && rn.length) {
@@ -191,7 +198,10 @@ function queryBMS() {
                 else $("#relayStatus"+i+" .v").removeClass("manoff");
             } else $("#relayStatus"+i).hide();
         }
-        $("#debuginfo").html(data.debuginfo);
+        if (data.watchDogHits) {
+            $("#watchDogHits").show();
+            $("#watchDogHits .v").html(data.watchDogHits);
+        } else $("#watchDogHits").hide();
 
         var d = new Date(1000 * data.now);
         $("#timenow").html(d.toLocaleString());
@@ -207,7 +217,8 @@ function queryBMS() {
             val = val + " under";
         $("#cellvolt .v").html(val);
 
-        var val = data.packvolts;
+        var val = Number(data.packvolts);
+        val = val/1000;
         if (data.maxPackVState || data.minPackVState)
             $("#packvolts .v").addClass("highlighted");
         else $("#packvolts .v").removeClass("highlighted");
@@ -215,11 +226,16 @@ function queryBMS() {
             val = "over " + val;
         if (data.minPackVState)
             val = "under " + val;
-        $("#packvolts .v").html(val);
+        $("#packvolts .v").html(val.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 }));
 
-        $("#packcurrent .v").html(data.packcurrent);
-        $("#pvcurrent .v").html(data.pvcurrent);
-        $("#loadcurrent .v").html(data.loadcurrent);
+        var pc = Number(data.packcurrent);
+        var pvc = Number(data.pvcurrent);
+        var lc = (pvc - pc)/1000;
+        pc = pc / 1000;
+        pvc = pvc / 1000;
+        $("#loadcurrent .v").html(lc.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 }));
+        $("#packcurrent .v").html(pc.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 }));
+        $("#pvcurrent .v").html(pvc.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 }));
         $("#soc .v").html(data.soc);
         if (data.socvalid)
             $("#soc .v").removeClass("manoff");
@@ -267,32 +283,31 @@ function queryBMS() {
 
         $("#nocontroller").hide();
 
-        if (data.nCells !== undefined) {
-            initCells(data.nBanks,data.nCells);
-
+        if (data.nCells != nCells) {
+            nCells = data.nCells;
+            nBanks = data.nBanks;
+            initCells();
         }
-        if (data.bank)
-        $.each(data.bank, function (index, value) { // does not handle multiple banks, multiple charts are needed
-            config.data.labels.push(new Date());
-            if (config.data.labels.length > 20)
-                config.data.labels.shift();
-            $.each(value, function (index, value) {
-                var data = config.data.datasets[index].data;
-                data.push(value.v / 1000.0);
-                if (data.length > 20)
-                    data.shift();
-                var tv = value.t + ' ' + value.v;
-                var cell = $("#tempC"+index+" .v");
-                cell.text(tv);
-                if (value.dumping) cell.addClass("dumping");
-                else cell.removeClass("dumping");
-            });
+        config.data.labels.push(new Date());
+        if (config.data.labels.length > 100)
+            config.data.labels.shift();
+        $.each(data.cells, function (index, value) { // does not handle multiple banks, multiple charts are needed
+            var data = config.data.datasets[value.c].data;
+            data.push(value.v / 1000.0);
+            if (data.length > 100)
+                data.shift();
+            var tv = value.t + ' ' + value.v;
+            var cell = $("#tempC"+value.c+" .v");
+            cell.text(tv);
+            if (value.d) cell.addClass("dumping");
+            else cell.removeClass("dumping");
             myChart.update();
         });
+        setTimeout(queryBMS, 2000);
     }).fail(function () {
         $("#nocontroller").show();
+        setTimeout(queryBMS, 2000);
     });
-  setTimeout(queryBMS, 2000);
 }
 
 function convertTemp(t) {
@@ -316,6 +331,49 @@ function toggleTemp() {
         }
     });
     return false;
+}
+
+function setupRelays(rt) {
+    for (var rel=0;rel<rt;rel++) {
+        var temp = $("#relay").clone();
+        temp.attr({id: "relay"+rel});
+        temp.find("[for='relayName']").text("J"+rel+":");
+        $.each(['Name','DoSOC','Type','Trip','Rec'],function (index,value) {
+            temp.find('#relay'+value).attr({id: "relay"+value+rel, name: "relay"+value+rel});
+        });
+        temp.find("[for]").each(function(index) {
+            var val=$(this).attr("for");
+            $(this).attr({for: val+rel});
+        });
+        temp.insertBefore("#relay");
+        temp = $("#relayStatus").clone();
+        temp.attr({id: "relayStatus"+rel});
+        var theA = temp.find("a");
+        theA.attr("relay",rel);
+        theA.click(function () {
+            var r = $(this).attr("relay");
+            $.ajax({
+                type: "POST",
+                url: "/saveOff",
+                data: { relay: r},
+                dataType:'json',
+                success: function (data) {
+                    var r = data.relay;
+                    if (data.val == "off")
+                        $("#relayStatus"+r+" .v").addClass("manoff");
+                    else $("#relayStatus"+r+" .v").removeClass("manoff");
+                    $("#savesuccess").show().delay(2000).fadeOut(500);
+                },
+                error: function (data) {
+                    $("#saveerror").show().delay(2000).fadeOut(500);
+                }
+            });
+            return false;
+         });
+        temp.insertBefore("#relayStatus");
+    }
+    $("#relay").remove();
+    $("#relayStatus").remove();
 }
 
 function Setup() {
@@ -367,46 +425,6 @@ function Setup() {
     }
     $("#Temps").remove();
     //Duplicate the template and then kill it.
-    for (var rel=0;rel<RELAY_TOTAL;rel++) {
-        var temp = $("#relay").clone();
-        temp.attr({id: "relay"+rel});
-        temp.find("[for='relayName']").text("J"+rel+":");
-        $.each(['Name','DoSOC','Type','Trip','Rec'],function (index,value) {
-            temp.find('#relay'+value).attr({id: "relay"+value+rel, name: "relay"+value+rel});
-        });
-        temp.find("[for]").each(function(index) {
-            var val=$(this).attr("for");
-            $(this).attr({for: val+rel});
-        });
-        temp.insertBefore("#relay");
-        temp = $("#relayStatus").clone();
-        temp.attr({id: "relayStatus"+rel});
-        var theA = temp.find("a");
-        theA.attr("relay",rel);
-        theA.click(function () {
-            var r = $(this).attr("relay");
-            $.ajax({
-                type: "POST",
-                url: "/saveOff",
-                data: { relay: r},
-                dataType:'json',
-                success: function (data) {
-                    var r = data.relay;
-                    if (data.val == "off")
-                        $("#relayStatus"+r+" .v").addClass("manoff");
-                    else $("#relayStatus"+r+" .v").removeClass("manoff");
-                    $("#savesuccess").show().delay(2000).fadeOut(500);
-                },
-                error: function (data) {
-                    $("#saveerror").show().delay(2000).fadeOut(500);
-                }
-            });
-            return false;
-         });
-        temp.insertBefore("#relayStatus");
-    }
-    $("#relay").remove();
-    $("#relayStatus").remove();
 
     $('#kickWifi').click(function () {
         $.get("/kickwifi", function () { });
