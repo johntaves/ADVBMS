@@ -1,5 +1,5 @@
 /*
-  HardwareSerial.h - Hardware serial library for Wiring
+  JTHardwareSerial.h - Hardware serial library for Wiring
   Copyright (c) 2006 Nicholas Zambetti.  All right reserved.
 
   This library is free software; you can redistribute it and/or
@@ -19,8 +19,8 @@
   Modified 28 September 2010 by Mark Sproul
 */
 
-#ifndef HardwareSerial_h
-#define HardwareSerial_h
+#ifndef JTHardwareSerial_h
+#define JTHardwareSerial_h
 
 #include <inttypes.h>
 
@@ -57,7 +57,7 @@
 
 struct COBBuffer;
 
-class HardwareSerial
+class JTHardwareSerial
 {
   private:
     COBBuffer *_rx_buffer;
@@ -74,7 +74,7 @@ class HardwareSerial
     uint8_t _u2x;
     void sendOne(uint8_t c);
   public:
-    HardwareSerial(COBBuffer *rx_buffer,
+    JTHardwareSerial(COBBuffer *rx_buffer,
       volatile uint8_t *ubrrh, volatile uint8_t *ubrrl,
       volatile uint8_t *ucsra, volatile uint8_t *ucsrb, volatile uint8_t *ucsrc,
       volatile uint8_t *udr,
@@ -91,18 +91,9 @@ class HardwareSerial
 };
 
 #if (defined(UBRRH) || defined(UBRR0H)) && ! DEFAULT_TO_TINY_DEBUG_SERIAL
-  extern HardwareSerial Serial;
+  extern JTHardwareSerial JTSerial;
 #elif defined(USBCON)
   #include "usb_api.h"
-#endif
-#if defined(UBRR1H)
-  extern HardwareSerial Serial1;
-#endif
-#if defined(UBRR2H)
-  extern HardwareSerial Serial2;
-#endif
-#if defined(UBRR3H)
-  extern HardwareSerial Serial3;
 #endif
 
 #endif

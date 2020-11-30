@@ -1,4 +1,4 @@
-#include "HardwareSerial.h"
+#include "JTHardwareSerial.h"
 #include <Arduino.h>
 #include <avr/sleep.h>
 #include <avr/power.h>
@@ -138,6 +138,7 @@ void processPkt(size_t len)
       while (i<nCells && theBuff.cells[i].used == 1)
         i++;
       if (i<nCells) {
+        theBuff.cells[i].ver = VER;
         theBuff.cells[i].used = 1;
         if (theBuff.cells[i].dump == 1)
           LOAD_ON
@@ -148,10 +149,11 @@ void processPkt(size_t len)
         theBuff.hdr.crc = CRC8(p+1, len - 1);
       }
     }
-    Serial.sendPacket(0); // wake up next dude
+
+    JTSerial.sendPacket(0); // wake up next dude
     delay(2);
 
-    Serial.sendPacket(len);
+    JTSerial.sendPacket(len);
     delay(len);
   }
 }
@@ -265,7 +267,7 @@ void setup() {
   // disable serial 1
   UCSR1B &= ~_BV(RXEN1);
   UCSR1B &= ~_BV(TXEN1);
-  Serial.begin((uint8_t*)&theBuff,sizeof(theBuff), 2400, SERIAL_8N1);
+  JTSerial.begin((uint8_t*)&theBuff,sizeof(theBuff), 2400, SERIAL_8N1);
 }
 
 void loop() {
@@ -282,15 +284,11 @@ void loop() {
 
     LOAD_OFF;
     flashLed(0,2);
-  } else {
-    uint8_t len;
-    GREENLED_ON;
+  } else {    GREENLED_ON;
     getADCVals();
-    len = Serial.waitForPacket(500);
-    if (len && !Serial.didFault())
+    uint8_t len = JTSerial.waitForPacket(500);
+    if (len && !JTSerial.didFault())
       processPkt(len);
-    else flashLed(2,4);
-    Serial.clear();
     GREENLED_OFF;
   }
 }

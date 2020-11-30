@@ -1,5 +1,5 @@
 /*
-  HardwareSerial.cpp - Hardware serial library for Wiring
+  JTHardwareSerial.cpp - Hardware serial library for Wiring
   Copyright (c) 2006 Nicholas Zambetti.  All right reserved.
 
   This library is free software; you can redistribute it and/or
@@ -29,12 +29,12 @@
 #include "wiring.h"
 #include "wiring_private.h"
 
-// this next line disables the entire HardwareSerial.cpp,
+// this next line disables the entire JTHardwareSerial.cpp,
 // this is so I can support Attiny series and any other chip without a uart
 // (If DISABLE_UART is set in core_build_options.h, HW serial is disabled completely.)
 #if defined(UBRRH) || defined(UBRR0H) || defined(UBRR1H) || defined(UBRR2H) || defined(UBRR3H) && !DISABLE_UART
 
-#include "HardwareSerial.h"
+#include "JTHardwareSerial.h"
 
 struct COBBuffer
 {
@@ -44,7 +44,7 @@ struct COBBuffer
 };
 
 #if defined(UBRRH) || defined(UBRR0H)
-  COBBuffer rx_buffer  =  { 0, 0, 0, false, 0 };
+  COBBuffer jtrx_buffer  =  { 0, 0, 0, false, 0 };
 #endif
 
 // do the COBs decoding in place
@@ -74,19 +74,19 @@ inline void store_char(unsigned char c, COBBuffer *rx_buffer)
   #else
     #error UDR not defined
   #endif
-    store_char(c, &rx_buffer);
+    store_char(c, &jtrx_buffer);
   }
 #elif defined(USART0_RECV_vect) && defined(UDR0)
   ISR(USART0_RECV_vect)
   {
     unsigned char c  =  UDR0;
-    store_char(c, &rx_buffer);
+    store_char(c, &jtrx_buffer);
   }
 #elif defined(UART0_RECV_vect) && defined(UDR0)
   ISR(UART0_RECV_vect)
   {
     unsigned char c  =  UDR0;
-    store_char(c, &rx_buffer);
+    store_char(c, &jtrx_buffer);
   }
 //#elif defined(SIG_USART_RECV)
 #elif defined(USART0_RX_vect)
@@ -101,7 +101,7 @@ inline void store_char(unsigned char c, COBBuffer *rx_buffer)
   #else
     #error UDR not defined
   #endif
-    store_char(c, &rx_buffer);
+    store_char(c, &jtrx_buffer);
   }
 #elif defined(UART_RECV_vect)
   // this is for atmega8
@@ -112,7 +112,7 @@ inline void store_char(unsigned char c, COBBuffer *rx_buffer)
   #elif defined(UDR)
     unsigned char c  =  UDR;  //  atmega8
   #endif
-    store_char(c, &rx_buffer);
+    store_char(c, &jtrx_buffer);
   }
 #elif defined(USBCON)
   #warning No interrupt handler for usart 0
@@ -124,7 +124,7 @@ inline void store_char(unsigned char c, COBBuffer *rx_buffer)
 
 // Constructors ////////////////////////////////////////////////////////////////
 
-HardwareSerial::HardwareSerial(COBBuffer *rx_buffer,
+JTHardwareSerial::JTHardwareSerial(COBBuffer *rx_buffer,
   volatile uint8_t *ubrrh, volatile uint8_t *ubrrl,
   volatile uint8_t *ucsra, volatile uint8_t *ucsrb,  volatile uint8_t *ucsrc,
   volatile uint8_t *udr,
@@ -146,7 +146,7 @@ HardwareSerial::HardwareSerial(COBBuffer *rx_buffer,
 
 // Public Methods //////////////////////////////////////////////////////////////
 
-void HardwareSerial::begin(uint8_t* buf,uint8_t len,unsigned long baud, byte config)
+void JTHardwareSerial::begin(uint8_t* buf,uint8_t len,unsigned long baud, byte config)
 {
   _rx_buffer->buffer = buf;
   _rx_buffer->bufferSize = len;
@@ -182,14 +182,14 @@ void HardwareSerial::begin(uint8_t* buf,uint8_t len,unsigned long baud, byte con
   sbi(*_ucsrb, _rxcie);
 }
 
-void HardwareSerial::end()
+void JTHardwareSerial::end()
 {
   cbi(*_ucsrb, _rxen);
   cbi(*_ucsrb, _txen);
   cbi(*_ucsrb, _rxcie);
 }
 
-uint8_t HardwareSerial::waitForPacket(uint32_t timeout)
+uint8_t JTHardwareSerial::waitForPacket(uint32_t timeout)
 {
   uint32_t startMillis=0;
   do {
@@ -203,24 +203,24 @@ uint8_t HardwareSerial::waitForPacket(uint32_t timeout)
   return 0;
 }
 
-bool HardwareSerial::didFault()
+bool JTHardwareSerial::didFault()
 {
   return _rx_buffer->fault;
 }
 
-void HardwareSerial::clear()
+void JTHardwareSerial::clear()
 {
   _rx_buffer->cnt = 0;
   _rx_buffer->nextCode = 0;
   _rx_buffer->fault = false;
 }
 
-uint8_t HardwareSerial::getCnt()
+uint8_t JTHardwareSerial::getCnt()
 {
   return _rx_buffer->cnt;
 }
 
-void HardwareSerial::sendOne(uint8_t c)
+void JTHardwareSerial::sendOne(uint8_t c)
 {
   while (!((*_ucsra) & (1 << _udre)))
     ;
@@ -228,36 +228,38 @@ void HardwareSerial::sendOne(uint8_t c)
   *_udr = c;
 }
 
-void HardwareSerial::sendPacket(uint8_t len)
+void JTHardwareSerial::sendPacket(uint8_t len)
 {
   if (!len) {
     sendOne(0);
     return;
   }
-  _rx_buffer->nextCode = 0;
+  uint8_t lastI=0xff;
+  uint8_t firstOne;
   for (uint8_t i=0;i<len;i++) {
     if (_rx_buffer->buffer[i])
       continue;
-    uint8_t val = i-_rx_buffer->nextCode+1;
-    if (!_rx_buffer->nextCode)
-      _rx_buffer->nextCode = val;
-    else _rx_buffer->buffer[i] = val;
+    if (lastI == 0xff) firstOne = i+1;
+    else _rx_buffer->buffer[lastI] = i-lastI;
+    lastI = i;
   }
-  sendOne(_rx_buffer->nextCode);
+  if (lastI == 0xff) firstOne = len+1;
+  else _rx_buffer->buffer[lastI] = len-lastI;
+  sendOne(firstOne);
   for (uint8_t i=0;i<len;i++)
     sendOne(_rx_buffer->buffer[i]);
   sendOne(0);
   _rx_buffer->cnt = 0;
-  _rx_buffer->nextCode = 0; // read for next read
+  _rx_buffer->nextCode = 0; // ready for next read
 }
 
 // Preinstantiate Objects //////////////////////////////////////////////////////
 
 #if ! DEFAULT_TO_TINY_DEBUG_SERIAL
   #if defined(UBRRH) && defined(UBRRL)
-    HardwareSerial Serial(&rx_buffer, &UBRRH, &UBRRL, &UCSRA, &UCSRB, &UCSRC, &UDR, RXEN, TXEN, RXCIE, UDRE, U2X);
+    JTHardwareSerial JTSerial(&jtrx_buffer, &UBRRH, &UBRRL, &UCSRA, &UCSRB, &UCSRC, &UDR, RXEN, TXEN, RXCIE, UDRE, U2X);
   #elif defined(UBRR0H) && defined(UBRR0L)
-    HardwareSerial Serial(&rx_buffer, &UBRR0H, &UBRR0L, &UCSR0A, &UCSR0B, &UCSR0C, &UDR0, RXEN0, TXEN0, RXCIE0, UDRE0, U2X0);
+    JTHardwareSerial JTSerial(&jtrx_buffer, &UBRR0H, &UBRR0L, &UCSR0A, &UCSR0B, &UCSR0C, &UDR0, RXEN0, TXEN0, RXCIE0, UDRE0, U2X0);
   #elif defined(USBCON)
     #warning no serial port defined  (port 0)
   #else
