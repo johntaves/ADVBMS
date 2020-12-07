@@ -15,21 +15,6 @@
 #include "defines.h"
 #include "SerData.h"
 
-#define GREEN_LED GPIO_NUM_4
-#define BLUE_LED GPIO_NUM_0
-#define RESISTOR_PWR GPIO_NUM_13
-#define TEMP1 GPIO_NUM_34
-#define TEMP2 GPIO_NUM_35
-#define FSR GPIO_NUM_32
-#define SPEAKER GPIO_NUM_19
-
-// poll the PV current every 2 secs
-#define POLLPV 2000
-// check everything every 3 secs
-#define CHECKSTATUS 2000
-// shut everything off if status has not happened within 2 secs of when it should
-#define WATCHDOGSLOP 10
-
 // cell v adjust
 // data dump
 // ding server
@@ -45,10 +30,17 @@
 // email did not work going from unset to sent. A reboot seemed to help
 // display accumulated error
 
-bool cellsTimedOut,emailSetup=false,loadsOff = false,chgOff = false,resPwrOn=false;
+#define AVEADJAVGS 16
+
+char debugstr[200];
+int8_t analCnt=0,curAnal=0;
+struct AnalogInput anals[Max_Analog];
+bool cellsTimedOut = true,emailSetup=false,loadsOff = true,chgOff = true
+  ,updateINAs=false,writeBattSet=false,writeESet=false,writeSensSet=false,writeWifiSet=false
+  ,initOTA=false;;
 uint8_t sentID=0;
-uint32_t sentMillis,receivedMillis=0,lastRoundMillis=0,numSent=0,failedSer=0;
-uint16_t resPwrMS=10;
+uint32_t sentMillis=1,receivedMillis=0,lastRoundMillis=0,numSent=0,failedSer=0;
+uint16_t resPwrMS=0;
 HTTPClient http;
 Ticker watchDog;
 atomic_flag taskRunning(0);
@@ -74,9 +66,9 @@ struct SensSettings sensSets;
 
 char spb[1024];
 
-uint32_t ledFlashMS = 0,statusMS=0,shuntPollMS=0,pvPollMS=0;
+uint32_t ledFlashMS = 0,statusMS=0,shuntPollMS=0,pvPollMS=0,analogPollMS=0;
 bool ledState = false;
-bool sendEmail = false,inAlertState = false;
+bool sendEmail = false,inAlertState = true;
 AsyncWebServer server(80);
 SMTPData smtpData;
 uint8_t previousRelayState[RELAY_TOTAL];
@@ -85,20 +77,20 @@ String emailRes = "";
 INA_Class         INA;
 int INADevs;
 int watchDogHits;
-uint16_t rawTemp1,rawTemp2,rawFSR;
 int stateOfCharge,milliRolls,curTemp1,curTemp2;
 int32_t lastMicroAmps,lastAdjMillAmpHrs = 0,lastPVMicroAmps=0;
 uint32_t lastMillis=0,lastShuntMillis;
-int64_t milliAmpMillis,battMilliAmpMillis;
+int64_t milliAmpMillis,battMilliAmpMillis,accumMilliAmpMillis;
 uint16_t lastPackMilliVolts = 0xffff;
-int64_t aveAdjMilliAmpMillis = 0,curAdjMilliAmpMillis = 0;
-uint32_t numAveAdj = 0,BatAHMeasured = 0;
-int lastTrip = 0;
-bool stateOfChargeValid=false;
-bool maxCellVState,minCellVState
-  ,maxPackVState,minPackVState
+int adjCnt,curAdj;
+int64_t aveAdjMilliAmpMillis,curAdjMilliAmpMillis[AVEADJAVGS];
+uint32_t BatAHMeasured = 0;
+int lastTrip;
+bool stateOfChargeValid;
+bool maxCellVState=false,minCellVState=false
+  ,maxPackVState=false,minPackVState=false,maxChargePctState=false
   ,maxCellCState=false,minCellCState=false
-  ,maxPackCState,minPackCState;
+  ,maxPackCState=false,minPackCState=false;
 
 uint8_t CRC8(const uint8_t *data,int length) 
 {
@@ -134,7 +126,6 @@ void InitOTA() {
   // Password can be set with it's md5 value as well
   // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
   // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
-
   ArduinoOTA
     .onStart([]() {
       String type;
@@ -144,11 +135,9 @@ void InitOTA() {
         type = "filesystem";
 
       // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-      OTAInProg = true;
       Serial.println("Start updating " + type);
     })
     .onEnd([]() {
-      OTAInProg = false;
       Serial.println("\nEnd");
     })
     .onProgress([](unsigned int progress, unsigned int total) {
@@ -167,25 +156,29 @@ void InitOTA() {
 }
 void getAmps() {
   lastMicroAmps = -INA.getBusMicroAmps(0);
+
   uint32_t thisMillis = millis();
-  milliAmpMillis += (int64_t)lastMicroAmps * (thisMillis - lastShuntMillis) / 1000;
+  int64_t deltaMilliAmpMillis = (int64_t)lastMicroAmps * (thisMillis - lastShuntMillis) / 1000;
+  milliAmpMillis += deltaMilliAmpMillis;
+  accumMilliAmpMillis += abs(deltaMilliAmpMillis);
+
   lastShuntMillis = thisMillis;
   if (milliAmpMillis < 0) {
-    curAdjMilliAmpMillis -= milliAmpMillis;
+    curAdjMilliAmpMillis[curAdj] -= milliAmpMillis;
     milliAmpMillis = 0;
   } else if (milliAmpMillis > battMilliAmpMillis) {
-    curAdjMilliAmpMillis += battMilliAmpMillis - milliAmpMillis;
+    curAdjMilliAmpMillis[curAdj] += battMilliAmpMillis - milliAmpMillis;
     milliAmpMillis = battMilliAmpMillis;
   }
 }
 
-int calcStein(int a,ADCTSet* tVals) {
+int calcStein(uint16_t a,ADCTSet* tVals) {
   if (a == 0 || tVals->bCoef == 0)
     return -101;
-  a += tVals->addr;
-  if (tVals->div)
-    a = a * tVals->mul / tVals->div;
-  float steinhart = ((float)tVals->range/(float)a - 1.0);
+  a += tVals->adc.addr;
+  if (tVals->adc.div)
+    a = a * tVals->adc.mul / tVals->adc.div;
+  float steinhart = ((float)tVals->adc.range/(float)a - 1.0);
 
   steinhart = log(steinhart); // ln(R/Ro)
   steinhart /= (float)tVals->bCoef; // 1/B * ln(R/Ro)
@@ -226,8 +219,8 @@ void onSerData(const uint8_t *receivebuffer, size_t len)
       p->rawT = cc->cells[i].t;
       p->dumping = cc->cells[i].dump;
       cc->cells[i].dump = false;
-      p->v = (uint16_t)(((uint32_t)p->rawV * 2 * 22100) / 10000);
-      p->t = calcStein(p->rawT,&sensSets.temps[TempC]);
+      p->v = (uint16_t)((((uint32_t)p->rawV + sensSets.cells[i].vSet.addr) * sensSets.cells[i].vSet.mul) / sensSets.cells[i].vSet.div);
+      p->t = calcStein(p->rawT,&sensSets.cells[i].tSet);
       //printCell(&cc->cells[i]);
       lastPackMilliVolts += p->v;
     }
@@ -262,6 +255,7 @@ void doPollCells()
   sentMillis = millis();
   numSent++;
   outBuff.hdr.id = ++sentID;
+  outBuff.hdr.ver = VER;
   outBuff.hdr.bank = 0;
   for (int i=0;!cellsTimedOut && i<battSets.nCells;i++)
     outBuff.cells[i].dump=cells[0][i].dump?1:0;
@@ -271,10 +265,16 @@ void doPollCells()
 }
 
 void doAHCalcs() {
-  aveAdjMilliAmpMillis = ((aveAdjMilliAmpMillis*numAveAdj) + curAdjMilliAmpMillis) / (numAveAdj+1);
-  numAveAdj++;
-  lastAdjMillAmpHrs = (int32_t)(curAdjMilliAmpMillis / ((int64_t)1000 * 60 * 60));
-  curAdjMilliAmpMillis = 0;
+  if (adjCnt < AVEADJAVGS)
+    adjCnt++;
+  for (int i=0;i<adjCnt;i++)
+    aveAdjMilliAmpMillis += curAdjMilliAmpMillis[i];
+  aveAdjMilliAmpMillis = adjCnt;
+  lastAdjMillAmpHrs = (int32_t)(curAdjMilliAmpMillis[curAdj] / ((int64_t)1000 * 60 * 60));
+  curAdj++;
+  if (curAdj == AVEADJAVGS)
+    curAdj = 0;
+  curAdjMilliAmpMillis[curAdj] = 0;
 }
 
 void shutOffRelays() {
@@ -309,7 +309,7 @@ void checkStatus()
       }
     } else if (inAlertState) {
       inAlertState = false;
-  Serial.println("Not in");
+  Serial.println("Not in alert");
       smtpData.setMessage("OK", true);
       sendEmail = true;
   //    EasyBuzzer.stopBeep();
@@ -400,33 +400,43 @@ void checkStatus()
   } else if (lastPackMilliVolts > battSets.limits[limits::Volt][limits::Pack][limits::Min][limits::Rec])
     minPackVState = false;
 
-  if (hitOver && milliAmpMillis < battMilliAmpMillis) {
+  if (hitOver) {
     if (lastTrip != 0) {
-      curAdjMilliAmpMillis += battMilliAmpMillis - milliAmpMillis;
+      if (milliAmpMillis < battMilliAmpMillis)
+        curAdjMilliAmpMillis[curAdj] += battMilliAmpMillis - milliAmpMillis;
       if (lastTrip < 0)
-        BatAHMeasured = (milliAmpMillis + curAdjMilliAmpMillis) / ((uint64_t)1000 * 1000 * 60 * 60);
-      lastTrip = 1;
+        BatAHMeasured = (milliAmpMillis + curAdjMilliAmpMillis[curAdj]) / ((uint64_t)1000 * 1000 * 60 * 60);
       doAHCalcs();
     }
+    lastTrip = 1;
     milliAmpMillis = battMilliAmpMillis;
     stateOfChargeValid = true;
   }
-  if (hitUnder && milliAmpMillis > 0) {
+  if (hitUnder) {
     if (lastTrip != 0) {
-      curAdjMilliAmpMillis -= milliAmpMillis;
+      if (milliAmpMillis > 0)
+        curAdjMilliAmpMillis[curAdj] -= milliAmpMillis;
       if (lastTrip > 0)
-        BatAHMeasured = (battMilliAmpMillis - milliAmpMillis + curAdjMilliAmpMillis) / ((uint64_t)1000 * 1000 * 60 * 60);
-      lastTrip = -1;
+        BatAHMeasured = (battMilliAmpMillis - milliAmpMillis + curAdjMilliAmpMillis[curAdj]) / ((uint64_t)1000 * 1000 * 60 * 60);
       doAHCalcs();
     }
+    lastTrip = -1;
     milliAmpMillis = 0;
     stateOfChargeValid = true;
   }
+  if (stateOfChargeValid) {
+    if (stateOfCharge > battSets.ChargePct)
+      maxChargePctState = true;
+    else if (stateOfCharge < battSets.ChargePctRec)
+      maxChargePctState = false;
+  } else
+    maxChargePctState = false;
 
   uint8_t relay[RELAY_TOTAL];
-  //Set defaults based on configuration
+  bool wasLoadsOff = loadsOff;
+  bool wasChgOff = chgOff;
   loadsOff = minCellVState || minPackVState || maxCellCState || maxPackCState;
-  chgOff = maxCellVState || maxPackVState || minCellCState || maxCellCState || minPackCState || maxPackCState;
+  chgOff = maxChargePctState || maxCellVState || maxPackVState || minCellCState || maxCellCState || minPackCState || maxPackCState;
   for (int8_t y = 0; y < RELAY_TOTAL; y++)
   {
     RelaySettings *rp = &battSets.relays[y];
@@ -434,18 +444,22 @@ void checkStatus()
       relay[y] = LOW;
     else {
       relay[y] = previousRelayState[y]; // don't change it because we might be in the SOC trip/rec area
-      if (rp->type == Relay_Load) {
-        if (loadsOff || (rp->doSOC && (!stateOfChargeValid || stateOfCharge < rp->trip))
-             || (cellsTimedOut && (!stateOfChargeValid || !rp->trip || stateOfCharge < rp->trip)))
-          relay[y] = LOW; // turn if off
-        else if (!rp->doSOC || (rp->doSOC && stateOfChargeValid && stateOfCharge > rp->rec))
-          relay[y] = HIGH; // turn it on
-      } else {
-        if (chgOff || (rp->doSOC && (!stateOfChargeValid || stateOfCharge > rp->trip))
-            || (cellsTimedOut && (!stateOfChargeValid || !rp->trip || stateOfCharge > rp->trip)))
-          relay[y] = LOW; // off
-        else if (!rp->doSOC || (rp->doSOC && stateOfChargeValid && stateOfCharge < rp->rec))
-          relay[y] = HIGH; // on
+      switch (rp->type) {
+        default: case Relay_Connect: relay[y] = cellsTimedOut || (wasLoadsOff && loadsOff && lastMicroAmps < 0) || (wasChgOff && chgOff && lastMicroAmps > 0)?LOW:HIGH; break;
+        case Relay_Load:
+          if (loadsOff || cellsTimedOut || (rp->doSoC && (!stateOfChargeValid || stateOfCharge < rp->trip)))
+            relay[y] = LOW; // turn if off
+          else if (!rp->doSoC || (rp->doSoC && stateOfChargeValid && stateOfCharge > rp->rec))
+            relay[y] = HIGH; // turn it on
+          // else leave it as-is
+          break;
+        case Relay_Charge:
+          if (chgOff || cellsTimedOut || (rp->doSoC && (!stateOfChargeValid || stateOfCharge > rp->trip)))
+            relay[y] = LOW; // off
+          else if (!rp->doSoC || (rp->doSoC && stateOfChargeValid && stateOfCharge < rp->rec))
+            relay[y] = HIGH; // on
+          // else leave it as-is
+          break;
       }
     }
   }
@@ -514,8 +528,6 @@ void doEmailSettings() {
 }
 
 void setINAs() {
-  if (INADevs == 0)
-    return;
   INA.begin(battSets.MaxAmps, battSets.ShuntUOhms,0);
   INA.begin(battSets.PVMaxAmps,battSets.PVShuntUOhms,1);
   INA.setShuntConversion(300,0);
@@ -535,6 +547,29 @@ void sendSuccess(AsyncWebServerRequest *request,const char* mess=NULL,bool suc=t
   request->send(response);
 }
 
+int toCel(String val) {
+  if (battSets.doCelsius)
+    return val.toInt();
+  return (val.toInt() - 32) * 5/9;
+}
+
+int fromCel(int c) {
+  if (battSets.doCelsius)
+    return c;
+  return c*9/5+32;
+}
+
+void setADCJson(JsonObject temp,ADCSet* a,const char* pre) {
+  char name[16];
+  sprintf(name,"%saddr",pre);
+  temp[name] = a->addr;
+  sprintf(name,"%smul",pre);
+  temp[name] = a->mul;
+  sprintf(name,"%sdiv",pre);
+  temp[name] = a->div;
+  sprintf(name,"%srange",pre);
+  temp[name] = a->range;
+}
 void settings(AsyncWebServerRequest *request){
   AsyncResponseStream *response =
       request->beginResponseStream("application/json");
@@ -555,7 +590,7 @@ void settings(AsyncWebServerRequest *request){
   root["ConvTime"] = battSets.ConvTime;
   root["BattAH"] = battSets.BattAH;
   root["socLastAdj"] = lastAdjMillAmpHrs;
-  snprintf(spb,sizeof(spb),"%d:%d",(int)(aveAdjMilliAmpMillis / ((int64_t)1000 * 60 * 60)),numAveAdj);
+  snprintf(spb,sizeof(spb),"%d:%d",(int)(aveAdjMilliAmpMillis / ((int64_t)1000 * 60 * 60)),adjCnt);
   root["socAvgAdj"] = spb;
   root["BatAHMeasured"] = BatAHMeasured > 0 ? String(BatAHMeasured) : String("N/A");
 
@@ -569,14 +604,22 @@ void settings(AsyncWebServerRequest *request){
   for (int i=0;i<MAX_TEMPS;i++) {
     JsonObject temp = temps.createNestedObject();
     temp["bCoef"] = sensSets.temps[i].bCoef;
-    temp["addr"] = sensSets.temps[i].addr;
-    temp["mul"] = sensSets.temps[i].mul;
-    temp["div"] = sensSets.temps[i].div;
-    temp["range"] = sensSets.temps[i].range;
+    setADCJson(temp,&sensSets.temps[i].adc,"");
   }
-  root["resPwrMS"]=resPwrMS;
+  temps = root.createNestedArray("cellSettings");
+  for (int i=0;i<battSets.nCells;i++) {
+    JsonObject temp = temps.createNestedObject();
+    temp["bCoef"] = sensSets.cells[i].tSet.bCoef;
+    setADCJson(temp,&sensSets.cells[i].tSet.adc,"cellC");
+    setADCJson(temp,&sensSets.cells[i].vSet,"cell");
+  }
   root["useCellC"]=battSets.useCellC;
   root["useTempC"]=battSets.useTempC;
+  root["ChargePct"]=battSets.ChargePct;
+  root["ChargePctRec"]=battSets.ChargePctRec;
+  root["FloatV"]=battSets.FloatV;
+  root["ChargeRate"]=battSets.ChargeRate;
+  root["OTAInProg"]=OTAInProg || initOTA;
 
   JsonObject obj = root.createNestedObject("limitSettings");
   for (int l0=0;l0<limits::Max0;l0++) {
@@ -585,7 +628,9 @@ void settings(AsyncWebServerRequest *request){
         for (int l3=0;l3<limits::Max3;l3++) {
           char name[5];
           sprintf(name,"%d%d%d%d",l0,l1,l2,l3);
-          obj[name] = battSets.limits[l0][l1][l2][l3];
+          if (l0 == limits::Temp)
+            obj[name] = fromCel(battSets.limits[l0][l1][l2][l3]);
+          else obj[name] = battSets.limits[l0][l1][l2][l3];
         }
       }
     }
@@ -594,11 +639,17 @@ void settings(AsyncWebServerRequest *request){
   JsonArray rsArray = root.createNestedArray("relaySettings");
   for (uint8_t r = 0; r < RELAY_TOTAL; r++) {
     JsonObject rule1 = rsArray.createNestedObject();
-    rule1["name"] =battSets.relays[r].name;
-    rule1["type"] =battSets.relays[r].type;
-    rule1["doSOC"] =battSets.relays[r].doSOC;
-    rule1["trip"] =battSets.relays[r].trip;
-    rule1["rec"] =battSets.relays[r].rec;
+    RelaySettings *rp = &battSets.relays[r];
+    rule1["name"] = rp->name;
+    switch (rp->type) {
+      default: case Relay_Connect: rule1["type"] = "E"; break;
+      case Relay_Load: rule1["type"] = (rp->doSoC?"LP":"L"); break;
+      case Relay_Charge: rule1["type"] = (rp->doSoC?"CP":(rp->fullChg?"CF":"C")); break;
+    }
+    
+    rule1["trip"] =rp->trip;
+    rule1["rec"] =rp->rec;
+    rule1["rank"] =rp->rank;
   }
 
   root["ssid"] = wifiSets.ssid;
@@ -606,28 +657,16 @@ void settings(AsyncWebServerRequest *request){
   request->send(response);
 }
 
-int toCel(String val) {
-  if (battSets.doCelsius)
-    return val.toInt();
-  return (val.toInt() - 32) * 5/9;
-}
-
-int fromCel(int c) {
-  if (battSets.doCelsius)
-    return c;
-  return c*9/5+32;
-}
-
 void saveOff(AsyncWebServerRequest *request) {
   if (request->hasParam("relay", true)) {
     int r = request->getParam("relay", true)->value().toInt();
     RelaySettings *rp = &battSets.relays[r];
-    rp->off = (rp->off + 1) % 2;
+    rp->off = !rp->off;
+    writeBattSet = true;
     AsyncResponseStream *response = request->beginResponseStream("application/json");
     DynamicJsonDocument doc(100);
-    writeEE((uint8_t*)&battSets, sizeof(battSets), EEPROM_BATT);
     doc["relay"] = r;
-    doc["val"] = rp->off == 1 ? "off" : "on";
+    doc["val"] = rp->off ? "off" : "on";
     doc["success"] = true;
     serializeJson(doc, *response);
     request->send(response);
@@ -665,6 +704,7 @@ void fillStatusDoc(JsonVariant root) {
   if (time(&now))
     root["now"]=now;
   root["version"] = "V: 0.6";
+  root["debugstr"] = debugstr;
   root["watchDogHits"] = watchDogHits;
   root["RELAY_TOTAL"] = RELAY_TOTAL;
   for (int i=0;i<RELAY_TOTAL;i++) {
@@ -676,7 +716,7 @@ void fillStatusDoc(JsonVariant root) {
     sprintf(dodad,"relayName%d",i);
     root[dodad] = battSets.relays[i].name;
     sprintf(dodad,"relayOff%d",i);
-    root[dodad] = battSets.relays[i].off == 1 ? "off" : "on";
+    root[dodad] = battSets.relays[i].off ? "off" : "on";
   }
 
   root["packcurrent"] = lastMicroAmps/1000;
@@ -687,9 +727,9 @@ void fillStatusDoc(JsonVariant root) {
   root["socvalid"] = stateOfChargeValid;
   root["temp1"] = fromCel(curTemp1);
   root["temp2"] = fromCel(curTemp2);
-  root["fsr"] = rawFSR;
-  root["rawTemp1"] = rawTemp1;
-  root["rawTemp2"] = rawTemp2;
+  root["fsr"] = anals[FSR_Analog].rawValue;
+  root["rawTemp1"] = anals[Temp1_Analog].rawValue;
+  root["rawTemp2"] = anals[Temp2_Analog].rawValue;
 
   root["maxCellVState"] = maxCellVState;
   root["minCellVState"] = minCellVState;
@@ -714,8 +754,10 @@ void fillStatusDoc(JsonVariant root) {
       cell["b"] = bank;
       cell["c"] = i;
       cell["v"] = cells[bank][i].v;
-      cell["t"] = cells[bank][i].t;
+      cell["t"] = fromCel(cells[bank][i].t);
       cell["d"] = cells[bank][i].dumping;
+      cell["rv"] = cells[bank][i].rawV;
+      cell["rt"] = cells[bank][i].rawT;
     }
   }
 }
@@ -738,29 +780,34 @@ void saverules(AsyncWebServerRequest *request) {
         for (int l3=0;l3<limits::Max3;l3++) {
           char name[5];
           sprintf(name,"%d%d%d%d",l0,l1,l2,l3);
-          if (request->hasParam(name, true, false))
-            battSets.limits[l0][l1][l2][l3] = request->getParam(name, true, false)->value().toInt();
+          if (request->hasParam(name, true, false)) {
+            if (l0 == limits::Temp)
+              battSets.limits[l0][l1][l2][l3] = toCel(request->getParam(name, true, false)->value());
+            else battSets.limits[l0][l1][l2][l3] = request->getParam(name, true, false)->value().toInt();
+          }
         }
       }
     }
   }
 
   for (int relay=0;relay<RELAY_TOTAL;relay++) {
-    char name[16];
+    char name[16],type[3];
     RelaySettings *rp = &battSets.relays[relay];
     sprintf(name,"relayName%d",relay);
     if (request->hasParam(name, true))
       request->getParam(name, true)->value().toCharArray(rp->name,sizeof(rp->name));;
     
     sprintf(name,"relayType%d",relay);
-    if (request->hasParam(name, true))
-      rp->type = request->getParam(name, true)->value().toInt();
-
-    sprintf(name,"relayDoSOC%d",relay);
-    if (request->hasParam(name, true))
-      rp->doSOC = request->getParam(name, true)->value().equals("on");
-    else
-      rp->doSOC = false;
+    if (request->hasParam(name, true)) {
+      request->getParam(name, true)->value().toCharArray(type,sizeof(type));
+      switch (type[0]) {
+        default: case 'E':rp->type = Relay_Connect;break;
+        case 'L':rp->type = Relay_Load;break;
+        case 'C':rp->type = Relay_Charge; break;
+      }
+      rp->doSoC = type[1] == 'P';
+      rp->fullChg = type[1] == 'F';
+    }
 
     sprintf(name,"relayTrip%d",relay);
     if (request->hasParam(name, true))
@@ -774,6 +821,15 @@ void saverules(AsyncWebServerRequest *request) {
   battSets.useTempC = request->hasParam("useTempC", true) && request->getParam("useTempC", true)->value().equals("on");
   battSets.useCellC = request->hasParam("useCellC", true) && request->getParam("useCellC", true)->value().equals("on");
 
+  if (request->hasParam("ChargePct", true))
+    battSets.ChargePct = request->getParam("ChargePct", true)->value().toInt();
+  if (request->hasParam("ChargePctRec", true))
+    battSets.ChargePctRec = request->getParam("ChargePctRec", true)->value().toInt();
+  if (request->hasParam("FloatV", true))
+    battSets.FloatV = request->getParam("FloatV", true)->value().toInt();
+  if (request->hasParam("ChargeRate", true))
+    battSets.ChargeRate = request->getParam("ChargeRate", true)->value().toInt();
+
   if (!battSets.useCellC) {
     maxCellCState = false;
     minCellCState = false;
@@ -782,7 +838,7 @@ void saverules(AsyncWebServerRequest *request) {
     maxPackCState = false;
     minPackCState = false;
   }
-  writeEE((uint8_t*)&battSets, sizeof(battSets), EEPROM_BATT);
+  writeBattSet = true;
 
   sendSuccess(request);
 }
@@ -806,7 +862,7 @@ void saveemail(AsyncWebServerRequest *request){
     request->getParam("logPW", true)->value().toCharArray(eSets.logPW,sizeof(eSets.logPW));
   eSets.doLogging = request->hasParam("doLogging", true) && request->getParam("doLogging", true)->value().equals("on");
 
-  writeEE((uint8_t*)&eSets,sizeof(eSets),EEPROM_EMAIL);
+  writeESet = true;
   doEmailSettings();
   sendSuccess(request);
 }
@@ -853,10 +909,8 @@ void WiFiInit(bool doSTA) {
   else WiFi.mode(WIFI_AP);
   WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
   WiFi.onEvent(onconnect, WiFiEvent_t::SYSTEM_EVENT_MAX);
-  Serial.print("WTF:");
-  Serial.println(wifiSets.apName);
   if (strlen(wifiSets.apName)) {
-    Serial.println("OK");
+    Serial.println(wifiSets.apName);
     WiFi.softAP(wifiSets.apName,wifiSets.apPW,1,1);
   } else WiFi.softAP("ADVBMS_CONTROLLER");
   if (doSTA && wifiSets.ssid[0] != 0)
@@ -881,20 +935,40 @@ void savewifi(AsyncWebServerRequest *request){
     request->getParam("ssid", true)->value().toCharArray(wifiSets.ssid,sizeof(wifiSets.ssid));
   if (request->hasParam("password", true))
     request->getParam("password", true)->value().toCharArray(wifiSets.password,sizeof(wifiSets.password));
-  writeEE((uint8_t*)&wifiSets,sizeof(wifiSets),EEPROM_WIFI);
+  writeWifiSet = true;
   WiFiInit(true);
   sendSuccess(request);
 }
 
-void setStateOfCharge(int val) {
+void setStateOfCharge(int val,bool valid) {
   milliAmpMillis = battMilliAmpMillis * val/100;
-  stateOfChargeValid = true;
-  curAdjMilliAmpMillis = 0;
+  stateOfChargeValid = valid;
+  curAdj = 0;
+  adjCnt = 0;
+  curAdjMilliAmpMillis[0] = 0;
   lastTrip = 0;
   aveAdjMilliAmpMillis = 0;
-  numAveAdj = 0;
 }
 
+void getADCSet(AsyncWebServerRequest *request,ADCSet* rp,int i,const char* pre) {
+  char name[16];
+  sprintf(name,"%saddr%d",pre,i);
+  if (request->hasParam(name, true))
+    rp->addr = request->getParam(name, true)->value().toInt();
+
+  sprintf(name,"%smul%d",pre,i);
+  if (request->hasParam(name, true))
+    rp->mul = request->getParam(name, true)->value().toInt();
+
+  sprintf(name,"%sdiv%d",pre,i);
+  if (request->hasParam(name, true))
+    rp->div = request->getParam(name, true)->value().toInt();
+
+  sprintf(name,"%srange%d",pre,i);
+  if (request->hasParam(name, true))
+    rp->range = request->getParam(name, true)->value().toInt();
+
+}
 void savesens(AsyncWebServerRequest *request) {
   for (int i=0;i<MAX_TEMPS;i++) {
     char name[16];
@@ -902,35 +976,26 @@ void savesens(AsyncWebServerRequest *request) {
     sprintf(name,"bCoef%d",i);
     if (request->hasParam(name, true))
       rp->bCoef = request->getParam(name, true)->value().toInt();
-    
-    sprintf(name,"addr%d",i);
-    if (request->hasParam(name, true))
-      rp->addr = request->getParam(name, true)->value().toInt();
-
-    sprintf(name,"mul%d",i);
-    if (request->hasParam(name, true))
-      rp->mul = request->getParam(name, true)->value().toInt();
-
-    sprintf(name,"div%d",i);
-    if (request->hasParam(name, true))
-      rp->div = request->getParam(name, true)->value().toInt();
-
-    sprintf(name,"range%d",i);
-    if (request->hasParam(name, true))
-      rp->range = request->getParam(name, true)->value().toInt();
-
+    getADCSet(request,&rp->adc,i,"");
   }
-  if (request->hasParam("resPwrMS", true))
-    resPwrMS = request->getParam("resPwrMS", true)->value().toInt();
-
-  writeEE((uint8_t*)&sensSets, sizeof(sensSets), EEPROM_SENS);
+  for (int i=0;i<battSets.nCells;i++) {
+    char name[16];
+    CellADCs *rp = &sensSets.cells[i];
+    sprintf(name,"cellCbCoef%d",i);
+    if (request->hasParam(name, true))
+      rp->tSet.bCoef = request->getParam(name, true)->value().toInt();
+    
+    getADCSet(request,&rp->tSet.adc,i,"cellC");
+    getADCSet(request,&rp->vSet,i,"cell");
+  }
+  writeSensSet = true;
 
   sendSuccess(request);
 }
 void savecapacity(AsyncWebServerRequest *request) {
   if (request->hasParam("CurSOC", true)) {
     AsyncWebParameter *p1 = request->getParam("CurSOC", true);
-    if (p1->value().length() > 0) setStateOfCharge(p1->value().toInt());
+    if (p1->value().length() > 0) setStateOfCharge(p1->value().toInt(),true);
   }
   if (request->hasParam("PollFreq", true)) {
     AsyncWebParameter *p1 = request->getParam("PollFreq", true);
@@ -976,17 +1041,15 @@ void savecapacity(AsyncWebServerRequest *request) {
     AsyncWebParameter *p1 = request->getParam("nCells", true);
     battSets.nCells =p1->value().toInt();
   }
-
-  writeEE((uint8_t*)&battSets, sizeof(battSets), EEPROM_BATT);
-
-  setINAs();
+  writeBattSet = true;
+  updateINAs = true;
 
   sendSuccess(request);
 }
 
 void toggleTemp(AsyncWebServerRequest *request) {
   battSets.doCelsius = !battSets.doCelsius;
-  writeEE((uint8_t*)&battSets, sizeof(battSets), EEPROM_BATT);
+  writeBattSet = true;
   AsyncResponseStream *response = request->beginResponseStream("application/json");
   DynamicJsonDocument doc(100);
   doc["val"] = battSets.doCelsius;
@@ -999,6 +1062,17 @@ void startServer() {
     sendEmail = true;
     smtpData.setMessage("This is a test", true);
     request->send(200, "text/plain", "OK Gonna send it");
+  });
+
+  server.on("/ota", HTTP_POST, [](AsyncWebServerRequest *request){
+    if (!OTAInProg)
+      initOTA = true;
+    else ESP.restart();
+    AsyncResponseStream *response = request->beginResponseStream("application/json");
+    DynamicJsonDocument doc(100);
+    doc["OTAInProg"]=OTAInProg || initOTA;
+    serializeJson(doc, *response);
+    request->send(response);
   });
 
   server.on("/toggleTemp", HTTP_GET, toggleTemp);
@@ -1018,18 +1092,23 @@ void startServer() {
   server.onNotFound(onRequest);
   server.begin();
 }
+
+void initADCSet(ADCSet* a,int16_t m,int16_t d) {
+    a->range = 4095;
+    a->addr = 0;
+    a->mul = m;
+    a->div = d;
+}
 void initSens() {
-    sensSets.temps[Temp1].bCoef = 3950;
-    sensSets.temps[Temp2].bCoef = 3950;
-    sensSets.temps[TempC].bCoef = 4050;
-    sensSets.temps[Temp1].range = 4095;
-    sensSets.temps[Temp2].range = 4095;
-    sensSets.temps[TempC].range = 1023;
-    for (int i=0;i<MAX_TEMPS;i++) {
-      sensSets.temps[i].addr = 0;
-      sensSets.temps[i].mul = 1;
-      sensSets.temps[i].div = 1;
-    }
+  for (int i=0;i<MAX_TEMPS;i++) {
+    sensSets.temps[i].bCoef = 3950;
+    initADCSet(&sensSets.temps[i].adc,1,1);
+  }
+  for (int i=0;i<MAX_CELLS;i++) {
+    sensSets.cells[i].tSet.bCoef = 4050;
+    initADCSet(&sensSets.cells[i].tSet.adc,1,1);
+    initADCSet(&sensSets.cells[i].vSet,44200,10000);
+  }
 }
 
 void initBattSets() {
@@ -1046,12 +1125,17 @@ void initBattSets() {
   battSets.ConvTime = 1000;
   battSets.useTempC = true;
   battSets.useCellC = true;
+  battSets.ChargePct = 100;
+  battSets.ChargePctRec = 0;
+  battSets.ChargeRate = 0;
+  battSets.FloatV = 3400;
   battSets.Avg = 1000;
   for (int i=0;i<RELAY_TOTAL;i++) {
     RelaySettings* r = &battSets.relays[i];
     r->name[0] = 0;
-    r->doSOC = false;
-    r->off = 0;
+    r->doSoC = false;
+    r->off = true;
+    r->fullChg = false;
     r->rec = 0;
     r->trip = 0;
     r->type = 0;
@@ -1060,13 +1144,32 @@ void initBattSets() {
     int mul = !i?1:8;
     battSets.limits[limits::Volt][i][limits::Max][limits::Trip] = 3500 * mul;
     battSets.limits[limits::Volt][i][limits::Max][limits::Rec] = 3400 * mul;
-    battSets.limits[limits::Volt][i][limits::Min][limits::Trip] = 2800 * mul;
+    battSets.limits[limits::Volt][i][limits::Min][limits::Trip] = 3100 * mul;
     battSets.limits[limits::Volt][i][limits::Min][limits::Rec] = 3200 * mul;
     battSets.limits[limits::Temp][i][limits::Max][limits::Trip] = 50;
     battSets.limits[limits::Temp][i][limits::Max][limits::Rec] = 45;
     battSets.limits[limits::Temp][i][limits::Min][limits::Trip] = 4;
     battSets.limits[limits::Temp][i][limits::Min][limits::Rec] = 7;
   }
+}
+
+void readAnalogs() {
+  for (int i=0;i<Max_Analog;i++) {
+    AnalogInput* ap = &anals[i];
+    uint16_t val = analogRead(ap->pin);
+    if (analCnt == NUMANALOGSAMPS)
+      ap->sumValue -= (uint32_t)ap->vals[curAnal];
+    ap->sumValue += val;
+    ap->vals[curAnal] = val;
+  }
+  if (analCnt < NUMANALOGSAMPS)
+    analCnt++;
+  for (int i=0;i<Max_Analog;i++)
+    anals[i].rawValue = anals[i].sumValue / (uint32_t)analCnt;
+  curAnal++;
+  if (curAnal >= NUMANALOGSAMPS)
+    curAnal = 0;
+  digitalWrite(RESISTOR_PWR,LOW);
 }
 
 void sendStatus(void* unused) {
@@ -1127,9 +1230,14 @@ void setup() {
   dataSer.setStream(&Serial2); // start serial for output
   dataSer.setPacketHandler(&onSerData);
 
-  pinMode(FSR, INPUT);
-  pinMode(TEMP1,INPUT);
-  pinMode(TEMP2,INPUT);
+  anals[Temp1_Analog].pin = TEMP1;
+  anals[Temp2_Analog].pin = TEMP2;
+  anals[FSR_Analog].pin = FSR;
+  for (int i=0;i<Max_Analog;i++) {
+    pinMode(anals[i].pin,INPUT);
+    anals[i].rawValue = 0;
+    anals[i].sumValue = 0;
+  }
   pinMode(GREEN_LED, OUTPUT);
   pinMode(BLUE_LED, OUTPUT);
   pinMode(RESISTOR_PWR, OUTPUT);
@@ -1142,20 +1250,39 @@ void setup() {
   INADevs = INA.begin(battSets.MaxAmps, battSets.ShuntUOhms);
   lastShuntMillis = millis();
   battMilliAmpMillis = (uint64_t)battSets.BattAH * (1000 * 60 * 60) * 1000; // convert to milliampmilliseconds
-  milliAmpMillis = battMilliAmpMillis * 80 / 100; /* No clue what the SOC was, so assume 80% */
-  setINAs();
+  setStateOfCharge(80,false);
+  if (INADevs)
+    setINAs();
 
   smtpData.setSendCallback(emailCallback);
   startServer();
   doPollCells();
-  InitOTA();
 }
 
 void loop() {
   if (lastMillis > millis()) milliRolls++;
   lastMillis = millis(); // for uptime to continue after 50 days
 
+  if (writeBattSet) {
+    writeEE((uint8_t*)&battSets, sizeof(battSets), EEPROM_BATT);
+    writeBattSet = false;
+  }
+  if (writeESet) {
+    writeEE((uint8_t*)&eSets,sizeof(eSets),EEPROM_EMAIL);
+    writeESet = false;
+  }
+  if (writeWifiSet) {
+    writeEE((uint8_t*)&wifiSets,sizeof(wifiSets),EEPROM_WIFI);
+    writeWifiSet = false;
+  }
+  if (writeSensSet) {
+    writeEE((uint8_t*)&sensSets, sizeof(sensSets), EEPROM_SENS);
+    writeSensSet = false;
+  }
   if (INADevs > 0) {
+    if (updateINAs)
+     setINAs();
+    updateINAs = false;
     if ((millis() - shuntPollMS) > battSets.PollFreq) {
       getAmps();
       shuntPollMS = millis();
@@ -1165,27 +1292,25 @@ void loop() {
       pvPollMS = millis();
     }
   }
-  if (!resPwrOn && (!resPwrMS || (millis() - statusMS) > (CHECKSTATUS-resPwrMS))) {
-    resPwrOn = true;
+  dataSer.update();
+  if (!resPwrMS && ((millis() - analogPollMS) > POLLANALOGS)) {
+    resPwrMS = millis();
     digitalWrite(RESISTOR_PWR,HIGH); // get current flowing through resistors
-  } else if ((!resPwrMS || resPwrOn) && (millis() - statusMS) > CHECKSTATUS) {
-    rawTemp1 = analogRead(TEMP1);
-    curTemp1 = calcStein(rawTemp1,&sensSets.temps[Temp1]);
-    rawTemp2 = analogRead(TEMP2);
-    curTemp2 = calcStein(rawTemp2,&sensSets.temps[Temp2]);
-    rawFSR = analogRead(FSR);
-    if (resPwrMS) {
-      digitalWrite(RESISTOR_PWR,LOW);
-      resPwrOn = false;
-    }
+  } else if (resPwrMS && (millis() - resPwrMS) > 3) {
+    readAnalogs();
+    analogPollMS = millis();
+    resPwrMS = 0;
+  }
+  if ((millis() - statusMS) > CHECKSTATUS) {
+    curTemp1 = calcStein(anals[Temp1_Analog].rawValue,&sensSets.temps[Temp1]);
+    curTemp2 = calcStein(anals[Temp2_Analog].rawValue,&sensSets.temps[Temp2]);
     checkStatus();
-    if (!OTAInProg && !taskRunning.test_and_set() && eSets.doLogging && strlen(eSets.logEmail))
+    if (!OTAInProg && eSets.doLogging && strlen(eSets.logEmail) && !taskRunning.test_and_set())
       xTaskCreate(sendStatus,"sendStatus",2000,NULL,0,NULL);
     statusMS = millis();
   }
 
   //EasyBuzzer.update();
-  dataSer.update();
   if ((millis() - ledFlashMS) > 2000) {
     digitalWrite(BLUE_LED,ledState ? LOW : HIGH);
     ledState = !ledState;
@@ -1196,5 +1321,12 @@ void loop() {
       Serial.println("Error sending Email, " + MailClient.smtpErrorReason());
     sendEmail = false;
   }
-  ArduinoOTA.handle();
+  if (initOTA && !taskRunning.test_and_set()) {
+    InitOTA();
+    initOTA = false;
+    OTAInProg = true;
+    taskRunning.clear();
+  }
+  if (OTAInProg)
+    ArduinoOTA.handle(); // this does nothing until it is initialized
 }

@@ -5,16 +5,43 @@
 #ifndef JTBMS_DEFINES_H_
 #define JTBMS_DEFINES_H_
 
-//Maximum of 16 cell modules (dont change this!)
-#define maximum_cell_modules 16
-#define maximum_bank_of_modules 4
-
 #define COMMS_BAUD_RATE 2400
 #define RELAY_ON 0xFF
 #define RELAY_OFF 0x99
 #define RELAY_X 0x00
-
 #define RELAY_TOTAL 6
+
+#define GREEN_LED GPIO_NUM_4
+#define BLUE_LED GPIO_NUM_0
+#define RESISTOR_PWR GPIO_NUM_13
+#define TEMP1 GPIO_NUM_34
+#define TEMP2 GPIO_NUM_35
+#define FSR GPIO_NUM_32
+#define SPEAKER GPIO_NUM_19
+
+// poll the PV current every 2 secs
+#define POLLPV 2000
+// check everything every 2 secs
+#define CHECKSTATUS 2000
+// shut everything off if status has not happened within 2 secs of when it should
+#define WATCHDOGSLOP 2000
+// read and average the analog stuff every
+#define POLLANALOGS 1000
+// average this many
+#define NUMANALOGSAMPS 16
+
+enum {
+  FSR_Analog,
+  Temp1_Analog,Temp2_Analog,
+  Max_Analog
+};
+
+struct AnalogInput {
+  uint8_t pin;
+  uint16_t rawValue;
+  uint16_t vals[NUMANALOGSAMPS];
+  uint32_t sumValue;
+};
 
 struct WiFiSettings {
   char ssid[33];
@@ -24,7 +51,7 @@ struct WiFiSettings {
 };
 
 enum {
-  Relay_Load,Relay_Charge
+  Relay_Connect,Relay_Load,Relay_Charge
 };
 
 struct limits {
@@ -37,7 +64,8 @@ struct limits {
 
 struct RelaySettings {
   char name[16];
-  uint8_t type,doSOC,trip,rec,off;
+  bool off,doSoC,fullChg;
+  uint8_t type,trip,rec,rank;
 };
 
 struct EmailSettings {
@@ -53,15 +81,27 @@ struct EmailSettings {
 };
 
 enum {
-  Temp1,Temp2,TempC,MAX_TEMPS
+  Temp1,Temp2,MAX_TEMPS
+};
+
+struct ADCSet {
+  int16_t addr;
+  uint16_t mul,div,range;
 };
 
 struct ADCTSet {
-  uint16_t bCoef,addr,mul,div,range;
+  uint16_t bCoef;
+  ADCSet adc;
+};
+
+struct CellADCs {
+  ADCTSet tSet;
+  ADCSet vSet;
 };
 
 struct SensSettings {
   ADCTSet temps[MAX_TEMPS];
+  CellADCs cells[MAX_CELLS];
 };
 
 struct BattSettings {
@@ -74,6 +114,8 @@ struct BattSettings {
   uint16_t Avg,ConvTime;
   uint32_t PollFreq;
   uint8_t nBanks,nCells;
+  uint8_t ChargePct,ChargePctRec;
+  uint16_t FloatV,ChargeRate;
 };
 
 #define EEPROM_WIFI 0

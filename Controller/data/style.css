@@ -1,5 +1,5 @@
-.error {padding:10px;display:none; width:80%;}
-.success {padding:10px;display:none; width:80%;}
+.error {color: red;}
+.success {color: green;}
 
 body {
     background-color: #DCD5F2;
@@ -87,14 +87,35 @@ label.field {
     width: 10em;
 }
 
+label.cellVoltADC {
+    width: 18em;
+}
 #net label {
     width: 10em;
 }
 
 #batt label {
-    width: 11em;
+    width: 13em;
 }
 
 .buttonhold {
     text-align: center;
+}
+
+#tempRow {
+    display: inline-block;
+}
+#minY,#maxY {
+    width: 3em;
+}
+
+#YScale label {
+    width: 3.5em;
+}
+
+.cellADC {
+    border: #a0a0a0 solid .15em;
+    border-radius: .5em;
+    margin-bottom: .3em;
+    width: fit-content;
 }

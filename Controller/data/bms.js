@@ -1,7 +1,24 @@
 $(function () {
     $("#email").click(function() {$.ajax({
         type: "POST",
-        url: "/email"
+        url: "/email",
+        success: function (data) {
+            $("#savesuccess").show().delay(2000).fadeOut(500);
+        },
+        error: function (data) {
+            $("#saveerror").show().delay(2000).fadeOut(500);
+        }
+    });});
+    $("#otaButton").click(function() {$.ajax({
+        type: "POST",
+        url: "/ota",
+        success: function (data) {
+            setOTAButton(data);
+            $("#savesuccess").show().delay(2000).fadeOut(500);
+        },
+        error: function (data) {
+            $("#saveerror").show().delay(2000).fadeOut(500);
+        }
     });});
     $("#menu > a").on('click',function (event) {
         $('#menu > a').removeClass("active");
@@ -14,6 +31,12 @@ $(function () {
     $("#limitsMenu").on('click',getSettings);
     $("#battMenu").on('click',getSettings);
     $("#netMenu").on('click',getSettings);
+    $(".error,.success").hide();
+    $("#maxY,#minY").change(function () {
+        config.options.scales.yAxes[0].ticks.max = parseFloat($("#maxY").val());
+        config.options.scales.yAxes[0].ticks.min = parseFloat($("#minY").val());
+        myChart.update();
+    });
     showContent("cell");
     initChart();
     Setup();
@@ -68,7 +91,7 @@ function initChart() {
                         display: true,
                         labelString: 'Volts'
                     },
-                    ticks: { max: 3.7, min: 2.5 }
+                    ticks: { max: 3.7, min: 2.8 }
                 }]
             }
         }
@@ -122,6 +145,27 @@ function initCells() {
          });
         temp.show();
     }
+    for (var tn=0;tn<nCells;tn++) {
+        var temp = $("#CellADC").clone();
+        temp.attr({cellval: true});
+        temp.attr({id: "CellADC"+tn});
+        var t = temp.find("[for='cellCbCoef']");
+        t.text("Cell "+tn+t.text());
+        $.each(['cellCbCoef','cellCaddr','cellCmul','cellCdiv','cellCrange','cellCcur','celladdr','cellmul','celldiv','cellrange','cellcur'],function (index,value) {
+            temp.find('#'+value).attr({id: value+tn, name: value+tn});
+            temp.find("[for='"+value+"']").attr({for: value+tn});
+        });
+        temp.insertBefore("#CellADC");
+        temp.show();
+    }
+    $("#CellADC").hide();
+
+}
+
+function setOTAButton(data) {
+    if (data.OTAInProg)
+        $("#otaButton").html("Restart");
+    else $("#otaButton").html("Turn On OTA");
 }
 
 function getSettings() {
@@ -148,6 +192,10 @@ function getSettings() {
             $("#PVShuntUOhms").val(data.PVShuntUOhms);
             $("#nBanks").val(data.nBanks);
             $("#nCells").val(data.nCells);
+            $("#ChargePct").val(data.ChargePct);
+            $("#ChargePctRec").val(data.ChargePctRec);
+            $("#FloatV").val(data.FloatV);
+            $("#ChargeRate").val(data.ChargeRate);
             
             $.each(data.tempSettings,function (index,value) {
                 $("#bCoef"+index).val(value.bCoef);
@@ -156,11 +204,24 @@ function getSettings() {
                 $("#div"+index).val(value.div);
                 $("#range"+index).val(value.range);
             });
-            $("#resPwrMS").val(data.resPwrMS);
+
+            $.each(data.cellSettings,function (index,value) {
+                $("#cellCbCoef"+index).val(value.cellCbCoef);
+                $("#cellCaddr"+index).val(value.cellCaddr);
+                $("#cellCmul"+index).val(value.cellCmul);
+                $("#cellCdiv"+index).val(value.cellCdiv);
+                $("#cellCrange"+index).val(value.cellCrange);
+                $("#celladdr"+index).val(value.celladdr);
+                $("#cellmul"+index).val(value.cellmul);
+                $("#celldiv"+index).val(value.celldiv);
+                $("#cellrange"+index).val(value.cellrange);
+            });
 
             $("#CurSOC").val('');
             $("#PollFreq").val(data.PollFreq);
             $("input[name='ssid'").val(data.ssid);
+
+            setOTAButton(data);
             
             $.each(data.limitSettings, function (index, value) {
                 $("#" + index).val(value);
@@ -170,8 +231,7 @@ function getSettings() {
 
             $.each(data.relaySettings, function (index, value) {
                 $("#relayName" + index).val(value.name);
-                $("#relayType" + index).val(value.type);
-                $("#relayDoSOC" + index).prop("checked", value.doSOC);
+                setRelayType.call($("#relayType" + index).val(value.type));
                 $("#relayTrip" + index).val(value.trip);
                 $("#relayRec" + index).val(value.rec);
             });
@@ -181,8 +241,15 @@ function getSettings() {
     return true;
 }
 
+function formatNum(n,d) {
+    return n.toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: d });
+}
+
 function queryBMS() {
     $.getJSON("status", function (data) {
+        if (data.debugstr) $("#debugstr").show().html(data.debugstr);
+        else $("#debugstr").hide();
+
         if (data.RELAY_TOTAL && !RELAY_TOTAL) {
             setupRelays(data.RELAY_TOTAL);
             RELAY_TOTAL = data.RELAY_TOTAL;
@@ -226,16 +293,16 @@ function queryBMS() {
             val = "over " + val;
         if (data.minPackVState)
             val = "under " + val;
-        $("#packvolts .v").html(val.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 }));
+        $("#packvolts .v").html(formatNum(val,2));
 
         var pc = Number(data.packcurrent);
         var pvc = Number(data.pvcurrent);
         var lc = (pvc - pc)/1000;
         pc = pc / 1000;
         pvc = pvc / 1000;
-        $("#loadcurrent .v").html(lc.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 }));
-        $("#packcurrent .v").html(pc.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 }));
-        $("#pvcurrent .v").html(pvc.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 }));
+        $("#loadcurrent .v").html(formatNum(lc,2));
+        $("#packcurrent .v").html(formatNum(pc,2));
+        $("#pvcurrent .v").html(formatNum(pvc,2));
         $("#soc .v").html(data.soc);
         if (data.socvalid)
             $("#soc .v").removeClass("manoff");
@@ -293,10 +360,13 @@ function queryBMS() {
             config.data.labels.shift();
         $.each(data.cells, function (index, value) { // does not handle multiple banks, multiple charts are needed
             var data = config.data.datasets[value.c].data;
-            data.push(value.v / 1000.0);
+            var valV = value.v / 1000.0;
+            data.push(valV);
             if (data.length > 100)
                 data.shift();
-            var tv = value.t + ' ' + value.v;
+            $("#cellcur"+index).text(value.rv);
+            $("#cellCcur"+index).text(value.rt);
+            var tv = value.t + ' ' + formatNum(valV,3);
             var cell = $("#tempC"+value.c+" .v");
             cell.text(tv);
             if (value.d) cell.addClass("dumping");
@@ -310,9 +380,9 @@ function queryBMS() {
     });
 }
 
-function convertTemp(t) {
+function convertTemp(doC,t) {
     var t = $(t + " .v").html();
-    if (data.val) t = (t-32)*5/9;
+    if (doC) t = (t-32)*5/9;
     else t = t*9/5 + 32;
     $(t + " .v").html(Math.round(t));
 }
@@ -322,8 +392,8 @@ function toggleTemp() {
         type: "GET",
         url: "/toggleTemp",
         success: function (data) {
-            convertTemp("#temp1");
-            convertTemp("#temp2");
+            convertTemp(data.val,"#temp1");
+            convertTemp(data.val,"#temp2");
             $("#savesuccess").show().delay(2000).fadeOut(500);
         },
         error: function (data) {
@@ -333,18 +403,29 @@ function toggleTemp() {
     return false;
 }
 
+function setRelayType() {
+    var r = $(this).attr("relay");
+    var val = $(this).val();
+    if (val == "CP" || val == "LP")
+        $("#relayDoSoC"+r).show();
+    else $("#relayDoSoC"+r).hide();
+}
+
 function setupRelays(rt) {
     for (var rel=0;rel<rt;rel++) {
         var temp = $("#relay").clone();
         temp.attr({id: "relay"+rel});
         temp.find("[for='relayName']").text("J"+rel+":");
-        $.each(['Name','DoSOC','Type','Trip','Rec'],function (index,value) {
+        $.each(['Name','DoSoC','Type','Trip','Rec'],function (index,value) {
             temp.find('#relay'+value).attr({id: "relay"+value+rel, name: "relay"+value+rel});
         });
         temp.find("[for]").each(function(index) {
             var val=$(this).attr("for");
             $(this).attr({for: val+rel});
         });
+        var theTy = temp.find("#relayType" + rel);
+        theTy.attr("relay",rel);
+        theTy.change(setRelayType);
         temp.insertBefore("#relay");
         temp = $("#relayStatus").clone();
         temp.attr({id: "relayStatus"+rel});
@@ -382,7 +463,7 @@ function Setup() {
 
     $("#temp1 a").click(toggleTemp);
     $("#temp2 a").click(toggleTemp);
-    var LIMITNames = [['Volts (mV)','Temp (C)'],['Cell','Pack'],['Max','Min'],['Trip:','Rec:']];
+    var LIMITNames = [['Volts (mV):','Temp (C):'],['Cell','Pack'],['Max','Min'],['Trip:','Rec:']];
     for (var l0=0;l0<LIMITNames[0].length;l0++) {
         for (var l1=0;l1<LIMITNames[1].length;l1++) {
             for (var l2=0;l2<LIMITNames[2].length;l2++) {
@@ -410,8 +491,7 @@ function Setup() {
     }
     $("#limit").remove();
     
-    //Duplicate the template and then kill it.
-    var TempNames = ['Temp','Temp 1','Cell Temp'];
+    var TempNames = ['Temp','Temp 1'];
     for (var tn=0;tn<TempNames.length;tn++) {
         var temp = $("#Temps").clone();
         temp.attr({id: "Temps"+tn});
@@ -424,7 +504,6 @@ function Setup() {
         temp.insertBefore("#Temps");
     }
     $("#Temps").remove();
-    //Duplicate the template and then kill it.
 
     $('#kickWifi').click(function () {
         $.get("/kickwifi", function () { });
