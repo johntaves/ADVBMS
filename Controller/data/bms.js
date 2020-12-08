@@ -9,17 +9,6 @@ $(function () {
             $("#saveerror").show().delay(2000).fadeOut(500);
         }
     });});
-    $("#otaButton").click(function() {$.ajax({
-        type: "POST",
-        url: "/ota",
-        success: function (data) {
-            setOTAButton(data);
-            $("#savesuccess").show().delay(2000).fadeOut(500);
-        },
-        error: function (data) {
-            $("#saveerror").show().delay(2000).fadeOut(500);
-        }
-    });});
     $("#menu > a").on('click',function (event) {
         $('#menu > a').removeClass("active");
         $(this).addClass("active");
@@ -155,17 +144,9 @@ function initCells() {
             temp.find('#'+value).attr({id: value+tn, name: value+tn});
             temp.find("[for='"+value+"']").attr({for: value+tn});
         });
-        temp.insertBefore("#CellADC");
+        temp.insertBefore("#CellADCPlace");
         temp.show();
     }
-    $("#CellADC").hide();
-
-}
-
-function setOTAButton(data) {
-    if (data.OTAInProg)
-        $("#otaButton").html("Restart");
-    else $("#otaButton").html("Turn On OTA");
 }
 
 function getSettings() {
@@ -206,7 +187,7 @@ function getSettings() {
             });
 
             $.each(data.cellSettings,function (index,value) {
-                $("#cellCbCoef"+index).val(value.cellCbCoef);
+                $("#cellCbCoef"+index).val(value.bCoef);
                 $("#cellCaddr"+index).val(value.cellCaddr);
                 $("#cellCmul"+index).val(value.cellCmul);
                 $("#cellCdiv"+index).val(value.cellCdiv);
@@ -221,8 +202,6 @@ function getSettings() {
             $("#PollFreq").val(data.PollFreq);
             $("input[name='ssid'").val(data.ssid);
 
-            setOTAButton(data);
-            
             $.each(data.limitSettings, function (index, value) {
                 $("#" + index).val(value);
             });

@@ -26,7 +26,7 @@
 // shut everything off if status has not happened within 2 secs of when it should
 #define WATCHDOGSLOP 2000
 // read and average the analog stuff every
-#define POLLANALOGS 1000
+#define POLLANALOGS 100
 // average this many
 #define NUMANALOGSAMPS 16
 

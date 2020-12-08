@@ -5,8 +5,8 @@
 #include <HTTPClient.h>
 #include <INA.h>
 #include <ArduinoOTA.h>
-#include "ArduinoJson.h"
-#include "ESP32_MailClient.h"
+#include <ArduinoJson.h>
+#include <ESP32_MailClient.h>
 #include <Wire.h>
 //#include <EasyBuzzer.h>
 #include <PacketSerial.h>
@@ -36,8 +36,7 @@ char debugstr[200];
 int8_t analCnt=0,curAnal=0;
 struct AnalogInput anals[Max_Analog];
 bool cellsTimedOut = true,emailSetup=false,loadsOff = true,chgOff = true
-  ,updateINAs=false,writeBattSet=false,writeESet=false,writeSensSet=false,writeWifiSet=false
-  ,initOTA=false;;
+  ,updateINAs=false,writeBattSet=false,writeESet=false,writeSensSet=false,writeWifiSet=false;
 uint8_t sentID=0;
 uint32_t sentMillis=1,receivedMillis=0,lastRoundMillis=0,numSent=0,failedSer=0;
 uint16_t resPwrMS=0;
@@ -47,7 +46,8 @@ atomic_flag taskRunning(0);
 bool OTAInProg = false;
 
 struct CellData {
-  uint16_t v,t,rawV,rawT;
+  uint16_t v,rawV,rawT;
+  int16_t t;
   bool dump,dumping;
 };
 CellData cells[MAX_BANKS][MAX_CELLS];
@@ -133,7 +133,7 @@ void InitOTA() {
         type = "sketch";
       else // U_SPIFFS
         type = "filesystem";
-
+      OTAInProg = true;
       // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
       Serial.println("Start updating " + type);
     })
@@ -172,12 +172,9 @@ void getAmps() {
   }
 }
 
-int calcStein(uint16_t a,ADCTSet* tVals) {
+int16_t calcStein(uint16_t a,ADCTSet* tVals) {
   if (a == 0 || tVals->bCoef == 0)
     return -101;
-  a += tVals->adc.addr;
-  if (tVals->adc.div)
-    a = a * tVals->adc.mul / tVals->adc.div;
   float steinhart = ((float)tVals->adc.range/(float)a - 1.0);
 
   steinhart = log(steinhart); // ln(R/Ro)
@@ -188,7 +185,11 @@ int calcStein(uint16_t a,ADCTSet* tVals) {
   float r = 10000.0*(adcRange-a)/a;
   float l = log(r/0.01763226979); //0.01763226979 =10000*exp(-3950/298.15)
   float t = 3950.0/l;*/
-  return (int)(steinhart-273.15);
+  int32_t cel = (int)(steinhart-273.15);
+  cel += tVals->adc.addr;
+  if (tVals->adc.div)
+    cel = cel * (int32_t)tVals->adc.mul / (int32_t)tVals->adc.div;
+  return cel;
 }
 
 void printCell(CellSerData *c) {
@@ -619,7 +620,6 @@ void settings(AsyncWebServerRequest *request){
   root["ChargePctRec"]=battSets.ChargePctRec;
   root["FloatV"]=battSets.FloatV;
   root["ChargeRate"]=battSets.ChargeRate;
-  root["OTAInProg"]=OTAInProg || initOTA;
 
   JsonObject obj = root.createNestedObject("limitSettings");
   for (int l0=0;l0<limits::Max0;l0++) {
@@ -892,8 +892,6 @@ void onconnect(WiFiEvent_t event, WiFiEventInfo_t info) {
       server.begin();
       configTime(0,0,"pool.ntp.org");
       Serial.println("Connecting http");
-      http.begin("http://advbms.com/PostData.aspx");
-      http.addHeader("Content-Type", "application/json");
       break;
     default: break;
   }
@@ -1064,17 +1062,6 @@ void startServer() {
     request->send(200, "text/plain", "OK Gonna send it");
   });
 
-  server.on("/ota", HTTP_POST, [](AsyncWebServerRequest *request){
-    if (!OTAInProg)
-      initOTA = true;
-    else ESP.restart();
-    AsyncResponseStream *response = request->beginResponseStream("application/json");
-    DynamicJsonDocument doc(100);
-    doc["OTAInProg"]=OTAInProg || initOTA;
-    serializeJson(doc, *response);
-    request->send(response);
-  });
-
   server.on("/toggleTemp", HTTP_GET, toggleTemp);
   server.on("/saveemail", HTTP_POST, saveemail);
   server.on("/saveOff", HTTP_POST, saveOff);
@@ -1093,8 +1080,8 @@ void startServer() {
   server.begin();
 }
 
-void initADCSet(ADCSet* a,int16_t m,int16_t d) {
-    a->range = 4095;
+void initADCSet(ADCSet* a,uint16_t r,int16_t m,int16_t d) {
+    a->range = r;
     a->addr = 0;
     a->mul = m;
     a->div = d;
@@ -1102,12 +1089,12 @@ void initADCSet(ADCSet* a,int16_t m,int16_t d) {
 void initSens() {
   for (int i=0;i<MAX_TEMPS;i++) {
     sensSets.temps[i].bCoef = 3950;
-    initADCSet(&sensSets.temps[i].adc,1,1);
+    initADCSet(&sensSets.temps[i].adc,4095,1,1);
   }
   for (int i=0;i<MAX_CELLS;i++) {
     sensSets.cells[i].tSet.bCoef = 4050;
-    initADCSet(&sensSets.cells[i].tSet.adc,1,1);
-    initADCSet(&sensSets.cells[i].vSet,44200,10000);
+    initADCSet(&sensSets.cells[i].tSet.adc,1023,1,1);
+    initADCSet(&sensSets.cells[i].vSet,1023,44200,10000);
   }
 }
 
@@ -1172,8 +1159,10 @@ void readAnalogs() {
   digitalWrite(RESISTOR_PWR,LOW);
 }
 
-void sendStatus(void* unused) {
+void sendStatus() {
 //Serial.printf("XP: %d, C: %d H: %d\n",uxTaskPriorityGet(NULL),xPortGetCoreID(),uxTaskGetStackHighWaterMark(NULL));
+  http.begin("http://advbms.com/PostData.aspx");
+  http.addHeader("Content-Type", "application/json");
   uint32_t st = millis();
   DynamicJsonDocument doc(2000);
   fillStatusDoc(doc.to<JsonVariant>());
@@ -1186,7 +1175,12 @@ void sendStatus(void* unused) {
   if (res != "OK")
     Serial.println(res);
   Serial.println(millis()-st);
+  http.end();
   taskRunning.clear();
+}
+
+void xSendStatus(void* unused) {
+  sendStatus();
   vTaskDelete(NULL);
 }
 
@@ -1257,6 +1251,7 @@ void setup() {
   smtpData.setSendCallback(emailCallback);
   startServer();
   doPollCells();
+  InitOTA();
 }
 
 void loop() {
@@ -1306,7 +1301,7 @@ void loop() {
     curTemp2 = calcStein(anals[Temp2_Analog].rawValue,&sensSets.temps[Temp2]);
     checkStatus();
     if (!OTAInProg && eSets.doLogging && strlen(eSets.logEmail) && !taskRunning.test_and_set())
-      xTaskCreate(sendStatus,"sendStatus",2000,NULL,0,NULL);
+      xTaskCreate(xSendStatus,"sendStatus",2000,NULL,0,NULL);
     statusMS = millis();
   }
 
@@ -1316,17 +1311,10 @@ void loop() {
     ledState = !ledState;
     ledFlashMS = millis();
   }
-  if (sendEmail && emailSetup) {
+  if (sendEmail && emailSetup && strlen(eSets.senderServer)) {
     if (!MailClient.sendMail(smtpData))
       Serial.println("Error sending Email, " + MailClient.smtpErrorReason());
     sendEmail = false;
   }
-  if (initOTA && !taskRunning.test_and_set()) {
-    InitOTA();
-    initOTA = false;
-    OTAInProg = true;
-    taskRunning.clear();
-  }
-  if (OTAInProg)
-    ArduinoOTA.handle(); // this does nothing until it is initialized
+  ArduinoOTA.handle(); // this does nothing until it is initialized
 }

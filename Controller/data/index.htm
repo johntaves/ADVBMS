@@ -101,7 +101,7 @@
                         <label class="rec" for="addr">Offset:</label>
                         <input type="number" name="addr" id="addr" value="" required="" maxlength="5" />
                         <label class="rec" for="mul">Mul:</label>
-                        <input type="number" name="mul" id="cellmul" value="" required="" maxlength="5" />
+                        <input type="number" name="mul" id="mul" value="" required="" maxlength="5" />
                         <label class="rec" for="div">Div:</label>
                         <input type="number" name="div" id="div" value="" required="" maxlength="5" />
                         <label class="rec" for="range">Range:</label>
@@ -109,38 +109,39 @@
                         <label class="rec" for="cur">Cur:</label>
                         <span id="cur"></span>
                     </div>
-                    <div id="CellADC" class="cellADC" style="display: none;">
-                        <div>
-                            <label class="field" for="cellCbCoef">: B Constant:</label>
-                            <input type="number" name="cellCbCoef" id="cellCbCoef" value="" required="" maxlength="5" />
-                            <label class="rec" for="cellCaddr">Offset:</label>
-                            <input type="number" name="cellCaddr" id="cellCaddr" value="" required="" maxlength="5" />
-                            <label class="rec" for="cellCmul">Mul:</label>
-                            <input type="number" name="cellCmul" id="cellCmul" value="" required="" maxlength="5" />
-                            <label class="rec" for="cellCdiv">Div:</label>
-                            <input type="number" name="cellCdiv" id="cellCdiv" value="" required="" maxlength="5" />
-                            <label class="rec" for="cellCrange">Range:</label>
-                            <input type="number" name="cellCrange" id="cellCrange" value="" required="" maxlength="5" />
-                            <label class="rec" for="cellCcur">Cur:</label>
-                            <span id="cellCcur"></span>
-                        </div>
-                        <div>
-                            <label class="cellVoltADC" for="celladdr">Voltage Offset:</label>
-                            <input type="number" name="celladdr" id="celladdr" value="" required="" maxlength="5" />
-                            <label class="rec" for="cellmul">Mul:</label>
-                            <input type="number" name="cellmul" id="cellmul" value="" required="" maxlength="5" />
-                            <label class="rec" for="celldiv">Div:</label>
-                            <input type="number" name="celldiv" id="celldiv" value="" required="" maxlength="5" />
-                            <label class="rec" for="cellrange">Range:</label>
-                            <input type="number" name="cellrange" id="cellrange" value="" required="" maxlength="5" />
-                            <label class="rec" for="cellcur">Cur:</label>
-                            <span id="cellcur"></span>
-                        </div>
-                    </div>
+                    <div id="CellADCPlace" style="display: none;"></div>
                     <div class="buttonhold"><input type="submit" value="Save Settings"/></div>
                 </div>
             </form>
-        </div>
+            <div id="CellADC" class="cellADC" style="display: none;">
+                <div>
+                    <label class="field" for="cellCbCoef">: B Constant:</label>
+                    <input type="number" name="cellCbCoef" id="cellCbCoef" value="" required="" maxlength="5" />
+                    <label class="rec" for="cellCaddr">Offset:</label>
+                    <input type="number" name="cellCaddr" id="cellCaddr" value="" required="" maxlength="5" />
+                    <label class="rec" for="cellCmul">Mul:</label>
+                    <input type="number" name="cellCmul" id="cellCmul" value="" required="" maxlength="5" />
+                    <label class="rec" for="cellCdiv">Div:</label>
+                    <input type="number" name="cellCdiv" id="cellCdiv" value="" required="" maxlength="5" />
+                    <label class="rec" for="cellCrange">Range:</label>
+                    <input type="number" name="cellCrange" id="cellCrange" value="" required="" maxlength="5" />
+                    <label class="rec" for="cellCcur">Cur:</label>
+                    <span id="cellCcur"></span>
+                </div>
+                <div>
+                    <label class="cellVoltADC" for="celladdr">Voltage Offset:</label>
+                    <input type="number" name="celladdr" id="celladdr" value="" required="" maxlength="5" />
+                    <label class="rec" for="cellmul">Mul:</label>
+                    <input type="number" name="cellmul" id="cellmul" value="" required="" maxlength="5" />
+                    <label class="rec" for="celldiv">Div:</label>
+                    <input type="number" name="celldiv" id="celldiv" value="" required="" maxlength="5" />
+                    <label class="rec" for="cellrange">Range:</label>
+                    <input type="number" name="cellrange" id="cellrange" value="" required="" maxlength="5" />
+                    <label class="rec" for="cellcur">Cur:</label>
+                    <span id="cellcur"></span>
+                </div>
+            </div>
+</div>
         <div id="batt">
             <form method="POST" action="savecapacity" autocomplete="off">
                 <div class="settings">
@@ -235,7 +236,6 @@
                 </div>
                 <div class="buttonhold"><input type="submit" value="Save settings" /></div>
             </form>
-            <div class="buttonhold"><button id="otaButton">Turn On OTA</button></div>
         </div>
     </div>
 </body>
