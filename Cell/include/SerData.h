@@ -14,7 +14,7 @@ struct CellSerData {
 
 struct CellsHeader {
   uint8_t crc;
-  uint8_t bank:2,id:2,ver:4;
+  uint8_t ver:2,cmd:1,arg:5;
 } __attribute__((packed));
 
 struct CellsSerData {

@@ -26,6 +26,8 @@ CellsSerData theBuff;
 volatile bool wdt_hit;
 volatile uint16_t adcRead;
 uint16_t lastT,lastV;
+uint8_t bank=0;
+uint16_t bauds[] = {2400,4800,9600,14400,19200,28800,38400,57600 };
 
 ISR(WDT_vect)
 {
@@ -132,29 +134,32 @@ void processPkt(size_t len)
 {
   int nCells = (len - sizeof(CellsHeader))/sizeof(CellSerData);
   uint8_t* p = (uint8_t*)&theBuff;
-  if (len > 0) {
-    if (nCells >=0 && nCells <= MAX_CELLS && theBuff.hdr.crc == CRC8(p+1, len - 1)) {
-      int i=0;
-      while (i<nCells && theBuff.cells[i].used == 1)
-        i++;
-      if (i<nCells) {
-        theBuff.cells[i].ver = VER;
-        theBuff.cells[i].used = 1;
-        if (theBuff.cells[i].dump == 1)
-          LOAD_ON
-        else LOAD_OFF;
-        theBuff.cells[i].v = lastV; // read voltage
-        theBuff.cells[i].t = lastT; // read temp
+  if (theBuff.hdr.crc != CRC8(p+1, len - 1) || theBuff.hdr.ver)
+    return;
+  uint8_t cmd = theBuff.hdr.cmd;
+  uint8_t arg = theBuff.hdr.arg;
+  if (!cmd && arg == bank && nCells >=0 && nCells <= MAX_CELLS) {
+    int i=0;
+    while (i<nCells && theBuff.cells[i].used == 1)
+      i++;
+    if (i<nCells) {
+      theBuff.cells[i].ver = VER;
+      theBuff.cells[i].used = 1;
+      if (theBuff.cells[i].dump == 1)
+        LOAD_ON
+      else LOAD_OFF;
+      theBuff.cells[i].v = lastV; // read voltage
+      theBuff.cells[i].t = lastT; // read temp
 
-        theBuff.hdr.crc = CRC8(p+1, len - 1);
-      }
+      theBuff.hdr.crc = CRC8(p+1, len - 1);
     }
+  }
 
-    JTSerial.sendPacket(0); // wake up next dude
-    delay(2);
-
-    JTSerial.sendPacket(len);
-    delay(len);
+  JTSerial.sendPacket(len);
+  delay(len); // delay to let the last byte go. At 2400 it should take 3.3ms
+  if (cmd) {
+    flashLed(0,5);
+    JTSerial.begin((uint8_t*)&theBuff,sizeof(theBuff), bauds[arg], SERIAL_8N1);
   }
 }
 
@@ -285,6 +290,7 @@ void loop() {
     LOAD_OFF;
     flashLed(0,2);
   } else {    GREENLED_ON;
+    JTSerial.sendPacket(0); // wake up next dude
     getADCVals();
     uint8_t len = JTSerial.waitForPacket(500);
     if (len && !JTSerial.didFault())
