@@ -22,22 +22,42 @@
 #define REFV_ON {PORTA |= _BV(PORTA7);}
 #define REFV_OFF {PORTA &= (~_BV(PORTA7));}
 
+// .5 sec interrupts, take 4 averages, 4 seconds is too long for the controller
+#define WD_AMT (WDP2|WDP0)
+#define NAVE 4
+#define WD_CNT 8
+// 3 wdt hits before giving up on serial
+#define WD_CNT_WAIT 3
+// temp every 5 seconds
+#define TEMP_CNT 10 
+
+struct AnalogInput {
+  uint16_t value;
+  uint16_t vals[NAVE];
+  uint32_t sumValue;
+} __attribute__((packed));
+
 CellsSerData theBuff;
-volatile bool wdt_hit;
+uint8_t bank=0,nAve=0,wdtCnt=0,curAve=0,tempCnt=0,adcFails=0;
+uint8_t wdtHits=0;
+volatile bool wdt_hit,uart_hit;
+volatile uint8_t wdtdoda;
 volatile uint16_t adcRead;
-uint16_t lastT,lastV;
-uint8_t bank=0;
+uint16_t lastT;
+AnalogInput volts;
+
 uint16_t bauds[] = {2400,4800,9600,14400,19200,28800,38400,57600 };
 
 ISR(WDT_vect)
 {
+  if (wdtdoda & 1) BLUELED_ON
+  else BLUELED_OFF;
   wdt_hit = true; // this just turns off the load if we did not get woken by serial
 }
 
 ISR(USART0_START_vect)
 {
-  //Not sure why this needs to be here
-  asm("NOP");
+  uart_hit = true;
 }
 
 ISR(ADC_vect)
@@ -91,13 +111,12 @@ void flashLed(int blue,int n) {
   doOneLed(blue,del);
 }
 
-void StartADC() {
+bool StartADC() {
     //ADMUXB – ADC Multiplexer Selection Register
   //Select external AREF pin (internal reference turned off)
   ADMUXB = _BV(REFS2);
 
   //ADCSRA – ADC Control and Status Register A
-  //Consider ADC sleep conversion mode?
   //prescaler of 64 = 8MHz/64 = 125KHz.
   ADCSRA |= _BV(ADPS2) | _BV(ADPS1); // | _BV(ADPS0);
 
@@ -120,21 +139,17 @@ void StartADC() {
   interrupts();
   sleep_cpu();
   sleep_disable();
-
-  // awake again, reading should be done, better make sure maybe the timer interrupt fired
-  while (bit_is_set(ADCSRA, ADSC)) {}
-
-  delay(10);
-
-  //adc_disable
+  bool ret = bit_is_set(ADCSRA, ADSC);
   ADCSRA &= (~(1 << ADEN));
+  if (ret) adcFails++;
+  return ret;
 }
 
-void processPkt(size_t len)
+void processPkt(uint8_t len)
 {
-  int nCells = (len - sizeof(CellsHeader))/sizeof(CellSerData);
+  uint8_t nCells = (len - sizeof(CellsHeader))/sizeof(CellSerData);
   uint8_t* p = (uint8_t*)&theBuff;
-  if (theBuff.hdr.crc != CRC8(p+1, len - 1) || theBuff.hdr.ver)
+  if (nCells > 16 || theBuff.hdr.crc != CRC8(p+1, len - 1) || theBuff.hdr.ver)
     return;
   uint8_t cmd = theBuff.hdr.cmd;
   uint8_t arg = theBuff.hdr.arg;
@@ -148,12 +163,16 @@ void processPkt(size_t len)
       if (theBuff.cells[i].dump == 1)
         LOAD_ON
       else LOAD_OFF;
-      theBuff.cells[i].v = lastV; // read voltage
+      if (adcFails > 15) theBuff.cells[i].fails = 15;
+      else theBuff.cells[i].fails = 0;
+      adcFails = 0;
+      theBuff.cells[i].v = volts.value; // read voltage
       theBuff.cells[i].t = lastT; // read temp
 
       theBuff.hdr.crc = CRC8(p+1, len - 1);
     }
   }
+  JTSerial.sendPacket(0); // wake up next dude
 
   JTSerial.sendPacket(len);
   delay(len); // delay to let the last byte go. At 2400 it should take 3.3ms
@@ -163,20 +182,37 @@ void processPkt(size_t len)
   }
 }
 
-void getADCVals() {
+void getADCVolts() {
   REFV_ON;
   delay(4);
 
   ADMUXA = (0 << MUX5) | (0 << MUX4) | (1 << MUX3) | (0 << MUX2) | (0 << MUX1) | (0 << MUX0);
-  StartADC(); // an interrupt will fire to catch the value;
-  lastV = adcRead;
+  if (StartADC())
+    return;
+  REFV_OFF;
+
+  if (nAve == NAVE)
+    volts.sumValue -= (uint32_t)volts.vals[curAve];
+  volts.vals[curAve] = adcRead;
+  volts.sumValue += (uint32_t)volts.vals[curAve];
+  if (nAve < NAVE)
+    nAve++;
+  volts.value = volts.sumValue / nAve;
+  curAve++;
+  if (curAve >= NAVE)
+    curAve=0;
+}
+
+void getADCTemp() {
+  REFV_ON;
 
   lastT = 0;
   ADMUXA = (0 << MUX5) | (0 << MUX4) | (0 << MUX3) | (1 << MUX2) | (0 << MUX1) | (0 << MUX0);
-  StartADC();
+  if (StartADC())
+    return;
+  REFV_OFF;
   lastT = adcRead;
 
-  REFV_OFF;
 }
 
 void setPorts() {
@@ -194,7 +230,7 @@ void setPorts() {
   BLUELED_OFF;
 }
 
-void watch5sec() {
+void setWatch(uint8_t cy) {
   MCUSR = 0;
   //Enable watchdog (to reset)
   WDTCSR |= bit(WDE);
@@ -204,7 +240,7 @@ void watch5sec() {
   // We INTERRUPT the chip after 8 seconds of sleeping (not reboot!)
   // WDE: Watchdog Enable
   // Bits 5, 2:0 – WDP[3:0]: Watchdog Timer Prescaler 3 - 0
-  WDTCSR = bit(WDIE) | bit(WDP3);
+  WDTCSR = bit(WDIE) | bit(cy);
   //| bit(WDE)
 
   wdt_reset();
@@ -262,7 +298,7 @@ void doSleep() {
 void setup() {
   wdt_disable();
   wdt_reset();
-  watch5sec();
+  setWatch(WD_AMT);
 
   setPorts();
   power_usart0_enable();
@@ -272,29 +308,56 @@ void setup() {
   // disable serial 1
   UCSR1B &= ~_BV(RXEN1);
   UCSR1B &= ~_BV(TXEN1);
+  volts.sumValue=0;
+  volts.value=0;
   JTSerial.begin((uint8_t*)&theBuff,sizeof(theBuff), 2400, SERIAL_8N1);
+}
+
+bool checkIfStuck() {
+  if (!wdt_hit)
+    return false;
+  if (wdtHits & 1) BLUELED_OFF
+  else BLUELED_ON;
+  wdt_hit = false;
+  return wdtHits++ >= WD_CNT_WAIT;
 }
 
 void loop() {
   wdt_reset();
   wdt_hit = false;
+  uart_hit = false;
   enableStartFrameDetection();
   doSleep();
   
   if (wdt_hit)
   {
-    setPorts();
-    ENABLE_SERRX;
-    ENABLE_SERTX;
-
-    LOAD_OFF;
-    flashLed(0,2);
-  } else {    GREENLED_ON;
-    JTSerial.sendPacket(0); // wake up next dude
-    getADCVals();
-    uint8_t len = JTSerial.waitForPacket(500);
-    if (len && !JTSerial.didFault())
+//    BLUELED_ON;
+    getADCVolts();
+//    BLUELED_OFF;
+    if (!tempCnt) {
+      tempCnt=TEMP_CNT;
+      getADCTemp();
+    } else tempCnt--;
+    if (wdtCnt++ > WD_CNT) {
+      LOAD_OFF;
+      JTSerial.clear();
+      flashLed(0,2);
+      wdtCnt=0;
+    }
+  } 
+  if (uart_hit) {
+    wdtCnt = 0;
+    GREENLED_ON;
+    uint8_t len;
+    wdt_hit = false;
+    wdtHits = 0;
+    while (!(len = JTSerial.checkForPacket()) && !JTSerial.didFault() && !checkIfStuck())
+      delay(1);
+    if (len)
       processPkt(len);
+    
+    JTSerial.clear();
     GREENLED_OFF;
+    BLUELED_OFF;
   }
 }

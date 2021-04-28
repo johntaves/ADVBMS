@@ -13,6 +13,7 @@ body {
     font-family: system-ui;
 }
 .manoff { background-color: gray;}
+.fullChg { background-color: lightgray;}
 .dumping { background-color: pink;}
 
 #uptime,#temp1,#temp2,#celltemp,#pkts,#fsr {
@@ -27,8 +28,13 @@ body {
     margin: .1em;
     min-width: 3em;
 }
-.stat .v {
+.stat .v,.t {
     font-size: larger;
+    font-weight: bold;
+}
+
+.lrg {
+    font-size: x-large;
     font-weight: bold;
 }
 
@@ -41,12 +47,16 @@ body {
 #menu a {
     color: white;
     text-decoration: none;
-    padding: 0 1em 0 1em;
+    padding: 0 .25em 0 .25em;
 }
 
 #menu .active {
     background-color: #8D7DC0;
-    border-radius: .3em .3em 0em 0em
+    border-radius: .3em .3em 0em 0em;
+}
+
+#CellsCali {
+    padding: .5em;
 }
 
 #content > div {
@@ -90,6 +100,9 @@ label.field {
 label.cellVoltADC {
     width: 18em;
 }
+label.samples {
+    width: 8em;
+}
 #net label {
     width: 10em;
 }
@@ -102,9 +115,17 @@ label.cellVoltADC {
     text-align: center;
 }
 
-#tempRow {
+#cellsRow {
     display: inline-block;
 }
+
+#cellsRow .t {
+    display: inline-block;
+    width: 1.5em;
+    text-align: right;
+    margin-right: .3em;
+}
+
 #minY,#maxY {
     width: 3em;
 }
@@ -118,4 +139,33 @@ label.cellVoltADC {
     border-radius: .5em;
     margin-bottom: .3em;
     width: fit-content;
+}
+
+#CellsMenu a {
+    display: block;
+    border-radius: .3em 0em 0em .3em;
+    background-color: #8D7DC0;
+    padding: .2em;
+    font-family: sans-serif;
+    font-size: large;
+    text-decoration: none;
+    color: black;
+    font-weight: bold;
+}
+
+#CellsMenu .active {
+    background-color: #DCD5F2;
+}
+
+#CellsMenu {
+    display: inline-block;
+    vertical-align: top;
+    margin-top: 1em;
+}
+
+#CellADCPlace {
+    border-radius: .4em;
+    display: inline-block;
+    background-color: #DCD5F2;
+    padding: 1em;
 }

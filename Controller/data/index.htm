@@ -13,44 +13,48 @@
     <div id="header">
         <div id="info">
             <div>
-                <div id="temp1" class="stat"><div class="x t">Temp 1</div><a href="" class="x v"></a></div>
-                <div id="temp2" class="stat"><div class="x t">Temp 2</div><a href="" class="x v"></a></div>
-                <div id="fsr" class="stat"><div class="x t">Force</div><div href="" class="x v"></div></div>
-                <div id="celltemp" class="stat"><div class="x t">Cell T</div><div class="x v highlight"></div></div>
-                <div id="cellvolt" class="stat"><div class="x t">Cell V</div><div class="x v highlight"></div></div>
-                <div id="packvolts" class="stat"><div class="x t">Pack (V)</div><div class="x v"></div></div>
-                <div id="packcurrent" class="stat"><div class="x t">Pack (A)</div><div class="x v"></div></div>
-                <div id="pvcurrent" class="stat"><div class="x t">PV (A)</div><div class="x v"></div></div>
-                <div id="loadcurrent" class="stat"><div class="x t">Load (A)</div><div class="x v"></div></div>
-                <div id="soc" class="stat"><div class="x t" title="State of Charge">SoC</div><div class="x v"></div></div>
-                <div class="stat" id="timenow"></div>
-                <div id="watchDogHits" class="stat"><div class="x t" title="Watch Dog Hits">WD Hits</div><div class="x v"></div></div>
+                <div id="temp1" class="stat"><div class="h">Temp 1</div><a href="" class="v"></a></div>
+                <div id="temp2" class="stat"><div class="h">Temp 2</div><a href="" class="v"></a></div>
+                <div id="fsr" class="stat"><div class="h">Force</div><div href="" class="v"></div></div>
+                <div id="celltemp" class="stat"><div class="h">Cell T</div><div class="v highlight"></div></div>
+                <div id="cellvolt" class="stat"><div class="h">Cell V</div><div class="v highlight"></div></div>
+                <div id="packcurrent" class="stat"><div class="h">Pack (A)</div><div class="v"></div></div>
+                <div id="pvcurrent" class="stat"><div class="h">PV (A)</div><div class="v"></div></div>
+                <div id="loadcurrent" class="stat"><div class="h">Load (A)</div><div class="v"></div></div>
+                <div id="packvolts" class="stat"><div class="h">Pack (V)</div><div class="v"></div></div>
+                <div id="maxdiffvolts" class="stat"><div class="h">Diff (V)</div><a href="" class="v"></a></div>
+                <div id="soc" class="stat"><div class="h" title="State of Charge">SoC</div><a href="" class="v"></a></div>
+                <div class="stat" id="datenow"></div>
+                <div id="watchDogHits" class="stat"><div class="h" title="Watch Dog Hits">WD Hits</div><div class="v"></div></div>
             </div>
             <div>
-                <div id="pkts" class="stat"><div class="x t">Pkts: sent err dur</div><div class="x v"></div></div>
-                <div id="uptime" class="stat"><div class="x t">Up Time</div><div class="x v"></div></div>
-                <div id="relayStatus" class="stat"><div class="x t">J1</div><a href="" class="x v"></a></div>
+                <div id="pkts" class="stat"><div class="h">Pkts dur</div><div class="v"></div></div>
+                <div id="uptime" class="stat"><div class="h">Up Time</div><div class="v"></div></div>
+                <div id="relayStatus" class="stat"><div class="h">J1</div><a href="" class="v"></a></div>
                 <div id="version" class="stat"></div>
+                <div class="stat lrg" id="timenow"></div>
                 <div id='nocells' class='stat error'>Cells are not responding</div>
                 <div id='nocontroller' class='stat error'>Controller is not responding</div>
                 <div id='saveerror' class='stat error'>Failed to save settings</div>
                 <div id='savesuccess' class='stat success'>Settings saved</div>
+                <div id='errmess' class='stat error'></div>
                 <div id='debugstr' class='stat success'></div>
+                <div id='lastEventMsg' class='stat error'><a href=""></a></div>
             </div>
         </div>
         <div id="menu">
-            <a id="cellsMenu" href="cells">Cells</a>
-            <a id="limitsMenu" href="limits">Limits</a>
-            <a id="battMenu" href="batt">Battery</a>
-            <a id="sensMenu" href="sens">Sensors</a>
-            <a id="netMenu" href="net">Network</a>
+            <a href="cells" class="active">Cells</a>
+            <a href="limits">Limits</a>
+            <a href="batt">Battery</a>
+            <a href="cali">Calibrate</a>
+            <a href="net">Network</a>
         </div>
     </div>
     <div id="content">
         <div id="cells">
-            <div id="YScale" class="stat"><div><label for="maxY">Max Y:</label></label><input id="maxY" type="text" value="3.7" /></div>
-            <div><label for="minY">Min Y:</label><input id="minY" type="text" value="2.8" /></div></div>
-            <div id="tempRow"><div id="tempC" style="display: none;" class="stat"><div class="x t">Temp</div><a class="x v"></a></div></div>
+            <div id="YScale" class="stat"><div><label for="maxY">Max Y:</label></label><input id="maxY" type="text" value="3.6" /></div>
+            <div><label for="minY">Min Y:</label><input id="minY" type="text" value="3.1" /></div></div>
+            <div id="cellsRow"><div id="cellTV" style="display: none;" class="stat"><div class="h">Temp</div><div class="t"></div><a class="v"></a></div></div>
             <div id="cellDiv">
             <canvas id="cellCan" ></canvas></div>
         </div>
@@ -67,6 +71,12 @@
                     <input type="number" name="FloatV" id="FloatV" min="0" max="5000" step="10" ></div>
                 <div><label class="field" for="ChargeRate">Max Charge Rate(A):</label>
                     <input type="number" name="ChargeRate" id="ChargeRate" min="0" step="10" ></div>
+                <div><label class="field" for="CellsOutMin">Cells N/A min%:</label>
+                    <input type="number" name="CellsOutMin" id="CellsOutMin" min="0" max="100" step="1" >
+                    <label class="rec" for="CellsOutMax">max%:</label>
+                    <input type="number" name="CellsOutMax" id="CellsOutMax" min="0" max="100" step="1" >
+                    <label class="rec" for="CellsOutTime">secs:</label>
+                    <input type="number" name="CellsOutTime" id="CellsOutTime" min="0" step="10" ></div>
                 <div id="relays">
                     <div id="relay">
                         <label for="relayName">J</label>
@@ -81,67 +91,81 @@
                         </select>
                         <span id="relayDoSoC">
                         <label for="relayTrip">Trip:</label>
-                            <input type="number" min="0" max="100" step="1" name="relayTrip" id="relayTrip" value="50" required="">
+                            <input type="number" min="0" max="100" step="1" name="relayTrip" id="relayTrip" value="50">
                         <label for="relayRec">Rec:</label>
-                            <input type="number" min="0" max="100" step="1" name="relayRec" id="relayRec" value="40" required=""></span>
-                    </div>
+                            <input type="number" min="0" max="100" step="1" name="relayRec" id="relayRec" value="40"></span>
+                        <span id="relayDoFrom"><label for="relayFrom">From:</label>
+                            <input type="text" name="relayFrom" id="relayFrom" value=""></span>
+                            </div>
                 </div>
-                If you turn off both of these, you'd better make sure it won't freeze or overheat.
-                <div><input id="useTempC" name="useTempC" type="checkbox" /><label for="useTempC">Use temperature sensor: </label></div>
+                If you turn off all of these, you'd better make sure it won't freeze or overheat.
+                <div><input id="useTemp1" name="useTemp1" type="checkbox" /><label for="useTemp1">Use temperature sensor 1: </label></div>
+                <div><input id="useTemp2" name="useTemp2" type="checkbox" /><label for="useTemp2">Use temperature sensor 2: </label></div>
                 <div><input id="useCellC" name="useCellC" type="checkbox" /><label for="useCellC">Use cell temperatures: </label></div>
                 <div class="buttonhold"><input type="submit" value="Save Settings" /></div>
             </form>
         </div>
-        <div id="sens">
-            <form method="POST" action="savesens" autocomplete="off">
-                <div class="settings">
-                    <div id="Temps">
-                        <label class="field" for="bCoef">: B Constant:</label>
-                        <input type="number" name="bCoef" id="bCoef" value="" required="" maxlength="5" />
-                        <label class="rec" for="addr">Offset:</label>
-                        <input type="number" name="addr" id="addr" value="" required="" maxlength="5" />
-                        <label class="rec" for="mul">Mul:</label>
-                        <input type="number" name="mul" id="mul" value="" required="" maxlength="5" />
-                        <label class="rec" for="div">Div:</label>
-                        <input type="number" name="div" id="div" value="" required="" maxlength="5" />
-                        <label class="rec" for="range">Range:</label>
-                        <input type="number" name="range" id="range" value="" required="" maxlength="5" />
-                        <label class="rec" for="cur">Cur:</label>
-                        <span id="cur"></span>
-                    </div>
-                    <div id="CellADCPlace" style="display: none;"></div>
-                    <div class="buttonhold"><input type="submit" value="Save Settings"/></div>
-                </div>
+        <div id="cali">
+            <form method="POST" action="savecali" autocomplete="off">
+                <table>
+                    <tr><th></th><th>B Const</th><th>Offset</th><th>Mul</th><th>Div</th><th>Range</th><th>Cur</th></tr>
+                    <tr><th>Temp 1:</th>
+                        <td><input type="number" name="bCoef0" id="bCoef0" value="" required="" maxlength="5" /></td>
+                        <td><input type="number" name="addr0" id="addr0" value="" required="" maxlength="5" /></td>
+                        <td><input type="number" name="mul0" id="mul0" value="" required="" maxlength="5" /></td>
+                        <td><input type="number" name="div0" id="div0" value="" required="" maxlength="5" /></td>
+                        <td><input type="number" name="range0" id="range0" value="" required="" maxlength="5" /></td>
+                        <td id="cur0"></td>
+                    </tr>
+                    <tr><th>Temp 2:</th>
+                        <td><input type="number" name="bCoef1" id="bCoef1" value="" required="" maxlength="5" /></td>
+                        <td><input type="number" name="addr1" id="addr1" value="" required="" maxlength="5" /></td>
+                        <td><input type="number" name="mul1" id="mul1" value="" required="" maxlength="5" /></td>
+                        <td><input type="number" name="div1" id="div1" value="" required="" maxlength="5" /></td>
+                        <td><input type="number" name="range1" id="range1" value="" required="" maxlength="5" /></td>
+                        <td id="cur1"></td>
+                    </tr>
+                </table>
+                <div class="buttonhold"><input type="submit" value="Save Settings"/></div>
             </form>
-            <div id="CellADC" class="cellADC" style="display: none;">
-                <div>
-                    <label class="field" for="cellCbCoef">: B Constant:</label>
-                    <input type="number" name="cellCbCoef" id="cellCbCoef" value="" required="" maxlength="5" />
-                    <label class="rec" for="cellCaddr">Offset:</label>
-                    <input type="number" name="cellCaddr" id="cellCaddr" value="" required="" maxlength="5" />
-                    <label class="rec" for="cellCmul">Mul:</label>
-                    <input type="number" name="cellCmul" id="cellCmul" value="" required="" maxlength="5" />
-                    <label class="rec" for="cellCdiv">Div:</label>
-                    <input type="number" name="cellCdiv" id="cellCdiv" value="" required="" maxlength="5" />
-                    <label class="rec" for="cellCrange">Range:</label>
-                    <input type="number" name="cellCrange" id="cellCrange" value="" required="" maxlength="5" />
-                    <label class="rec" for="cellCcur">Cur:</label>
-                    <span id="cellCcur"></span>
-                </div>
-                <div>
-                    <label class="cellVoltADC" for="celladdr">Voltage Offset:</label>
-                    <input type="number" name="celladdr" id="celladdr" value="" required="" maxlength="5" />
-                    <label class="rec" for="cellmul">Mul:</label>
-                    <input type="number" name="cellmul" id="cellmul" value="" required="" maxlength="5" />
-                    <label class="rec" for="celldiv">Div:</label>
-                    <input type="number" name="celldiv" id="celldiv" value="" required="" maxlength="5" />
-                    <label class="rec" for="cellrange">Range:</label>
-                    <input type="number" name="cellrange" id="cellrange" value="" required="" maxlength="5" />
-                    <label class="rec" for="cellcur">Cur:</label>
-                    <span id="cellcur"></span>
+            <div id="CellsCali">
+                <div id="CellsMenu"><a id="CellMenuTemp" href="cell" style="display: none;">Cell</a></div><div id="CellADCPlace"></div>
+                <div id="CellADC" style="display: none;">
+                    <form method="POST" action="savecali" autocomplete="off">
+                        <table><tr><th></th><th>B Const</th><th>Offset</th><th>Mul</th><th>Div</th><th>Range</th><th>Cur</th><th>Cal</th></tr>
+                            <tr>
+                            <td>Temp:</td>
+                            <td><input type="number" name="cellCbCoef" id="cellCbCoef" value="" required="" maxlength="5" /></td>
+                            <td><input type="number" name="cellCaddr" id="cellCaddr" value="" required="" maxlength="5" /></td>
+                            <td><input type="number" name="cellCmul" id="cellCmul" value="" required="" maxlength="5" /></td>
+                            <td><input type="number" name="cellCdiv" id="cellCdiv" value="" required="" maxlength="5" /></td>
+                            <td><input type="number" name="cellCrange" id="cellCrange" value="" required="" maxlength="5" /></td>
+                            <td id="cellCRawcur"></td>
+                            <td id="cellCcur"></td>
+                            </tr>
+                            <tr>
+                            <td colspan="2">Voltage:</td>
+                            <td><input type="number" name="celladdr" id="celladdr" value="" required="" maxlength="5" /></td>
+                            <td><input type="number" name="cellmul" id="cellmul" value="" required="" maxlength="5" /></td>
+                            <td><input type="number" name="celldiv" id="celldiv" value="" required="" maxlength="5" /></td>
+                            <td><input type="number" name="cellrange" id="cellrange" value="" required="" maxlength="5" /></td>
+                            <td id="cellVRawcur"></td>
+                            <td id="cellVcur"></td>
+                        </tr>
+                        </table>
+                        <table><tr><th></th><th>Measured</th><th>ADC</th><th>Temp</th></tr>
+                            <tr><td>1:</td><td><input type="number" id="samp0_" maxlength="5" /></td><td id="sampadc0_"></td><td id="sampt0_"></td></tr>
+                            <tr><td>2:</td><td><input type="number" id="samp1_" maxlength="5" /></td><td id="sampadc1_"></td><td id="sampt1_"></td></tr>
+                            <tr><td>3:</td><td><input type="number" id="samp2_" maxlength="5" /></td><td id="sampadc2_"></td><td id="sampt2_"></td></tr>
+                            <tr><td>4:</td><td><input type="number" id="samp3_" maxlength="5" /></td><td id="sampadc3_"></td><td id="sampt3_"></td></tr>
+                        </table><button id="applyButt">Apply</button>
+                        <span id="sampb"></span>:<span id="sampa"></span>
+                        <div>Fails: <span id="cellFails"></span></div>
+                        <div class="buttonhold"><input type="submit" value="Save Settings"/></div>
+                    </form>
                 </div>
             </div>
-</div>
+        </div>
         <div id="batt">
             <form method="POST" action="savecapacity" autocomplete="off">
                 <div class="settings">
@@ -168,6 +192,10 @@
                     <div>
                         <label for="BattAH">Capacity (Ah):</label>
                         <input type="number" name="BattAH" id="BattAH" value="" required="" maxlength="4" />
+                    </div>
+                    <div>
+                        <label for="TopAmps">Amps @ Max V = 100% (A):</label>
+                        <input type="number" name="TopAmps" id="TopAmps" value="" required="" maxlength="4" />
                     </div>
                     <div>
                         <label for="MaxAmps">Pack Max Amps (A):</label>
@@ -218,21 +246,26 @@
                     <input name="logPW" type="password"/></div>
                 <div><label for="doLogging">Enable Logging:</label>
                     <input name="doLogging" type="checkbox"/></div>
+                <div id="cellBaudDiv"><label for="cellBaud">Cell Baudrate:</label>
+                    <select id="cellBaud" name="cellBaud"><option value="0">2400</option><option value="1">4800</option><option value="2">9600</option><option value="3">14400</option>
+                        <option value="4">19200</option><option value="5">28800</option><option value="6">38400</option><option value="7">57600</option>
+                    </select><button id="resetBaud">Reset</button>
+                </div>
                 <div class="buttonhold"><input type="submit" value="Save settings" /></div>
                 <div class="buttonhold"><button id="email">Test EMail</button></div>
             </form>
             <form method="POST" action="savewifi" autocomplete="off">
-                <div><label for="apName">This WiFi Name:</label>
+                <div><label for="apName">This AP Name:</label>
                     <input name="apName" type="text"/></div>
-                <div><label for="apPW">This WiFi PW:</label>
+                <div><label for="apPW">This AP Passphrase:</label>
                     <input name="apPW" type="text"/></div>
                 <div>
                     <label for="ssid">Network Name:</label>
-                    <input name="ssid" type="text"/><button id="kickWifi">Retry</button>
+                    <input name="ssid" type="text"/>
                 </div>
                 <div>
                     <label for="password">Password:</label>
-                    <input name="password" type="password"/>
+                    <input name="password" type="text"/>
                 </div>
                 <div class="buttonhold"><input type="submit" value="Save settings" /></div>
             </form>

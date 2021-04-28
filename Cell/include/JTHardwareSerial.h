@@ -82,10 +82,8 @@ class JTHardwareSerial
     void begin(uint8_t* buf,uint8_t len,unsigned long baud) { begin(buf,len,baud, SERIAL_8N1); }
     void begin(uint8_t* buf,uint8_t len,unsigned long, uint8_t);
     void end();
-    uint8_t getCnt();
-    uint8_t waitForPacket(uint32_t timeout);
+    uint8_t checkForPacket();
     void clear();
-    uint8_t recvd();
     bool didFault();
     void sendPacket(uint8_t len);
 };

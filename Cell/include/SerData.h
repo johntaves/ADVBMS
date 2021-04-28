@@ -8,7 +8,7 @@
 #define VER 0
 
 struct CellSerData {
-  uint16_t used:1,dump:1,un1:4,t:10;
+  uint16_t used:1,dump:1,fails:4,t:10;
   uint16_t ver:4,un2:2,v:10;
 } __attribute__((packed));
 

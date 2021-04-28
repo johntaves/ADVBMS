@@ -60,8 +60,9 @@ inline void store_char(unsigned char c, COBBuffer *rx_buffer)
       rx_buffer->nextCode = c + rx_buffer->cnt;
     } else
       rx_buffer->buffer[rx_buffer->cnt++] = c;
-  } else
+  } else {
     rx_buffer->fault = true;
+  }
 }
 
 #if defined(USART_RX_vect)
@@ -189,17 +190,10 @@ void JTHardwareSerial::end()
   cbi(*_ucsrb, _rxcie);
 }
 
-uint8_t JTHardwareSerial::waitForPacket(uint32_t timeout)
+uint8_t JTHardwareSerial::checkForPacket()
 {
-  uint32_t startMillis=0;
-  do {
-    if (_rx_buffer->cnt && !_rx_buffer->nextCode)
-      return _rx_buffer->cnt;
-    if (!startMillis)
-      startMillis = millis();
-
-  } while (millis() - startMillis < 1000);
-
+  if (_rx_buffer->cnt && !_rx_buffer->nextCode)
+    return _rx_buffer->cnt;
   return 0;
 }
 
@@ -215,14 +209,10 @@ void JTHardwareSerial::clear()
   _rx_buffer->fault = false;
 }
 
-uint8_t JTHardwareSerial::getCnt()
-{
-  return _rx_buffer->cnt;
-}
-
+extern bool checkIfStuck();
 void JTHardwareSerial::sendOne(uint8_t c)
 {
-  while (!((*_ucsra) & (1 << _udre)))
+  while (!((*_ucsra) & (1 << _udre)) && !checkIfStuck())
     ;
 
   *_udr = c;
