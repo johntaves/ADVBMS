@@ -245,10 +245,6 @@ function initCells() {
                 data: { cell: r},
                 dataType:'json',
                 success: function (data) {
-                    var r = data.cell;
-                    if (data.val == "off")
-                        $("#cellTV"+r+" .v").addClass("manoff");
-                    else $("#cellTV"+r+" .v").removeClass("manoff");
                     $("#savesuccess").show().delay(2000).fadeOut(500);
                 },
                 error: function (data) {

@@ -10,10 +10,6 @@
 #include <Wire.h>
 #include <EasyBuzzer.h>
 #include <PacketSerial.h>
-#include <BLEDevice.h>
-#include <BLEUtils.h>
-#include <BLEScan.h>
-#include <BLEAdvertisedDevice.h>
 
 #include <time.h>
 #include <Ticker.h>
@@ -299,12 +295,10 @@ bool doShutOffNoStatus(uint32_t t) {
   return ((uint32_t)battSets.CellsOutTime < ((millis() - t)*1000) || !stateOfChargeValid || stateOfCharge < battSets.CellsOutMin || stateOfCharge > battSets.CellsOutMax);
 }
 
-void initRelays(bool fullStop) {
+void initRelays() {
   for (int i=0;i<RELAY_TOTAL;i++) {
     digitalWrite(relayPins[i], LOW);
     previousRelayState[i] = LOW;
-    if (fullStop)
-      battSets.relays[i].off = true;
   }
 }
 
@@ -330,7 +324,7 @@ void doPollCells(int bank)
     cellsTimedOut = sentMillis > 0;
     cellsOverDue = cellsTimedOut && doShutOffNoStatus(lastSentMillis);
     if (cellsOverDue) {
-      initRelays(false);
+      initRelays();
       trimLastEventMsg();
       snprintf(lastEventMsg,sizeof(lastEventMsg),"%s overdue | ",lastEventMsg);
     }
@@ -363,7 +357,7 @@ void doAHCalcs() {
 
 void doWatchDog() {
   if (doShutOffNoStatus(statusMS)) {
-    initRelays(false);
+    initRelays();
     trimLastEventMsg();
     snprintf(lastEventMsg,sizeof(lastEventMsg),"%s Watch Dog | ",lastEventMsg);
   }
@@ -408,7 +402,7 @@ void checkStatus()
             ,lastMicroAmps,chgOff,loadsOff,(int)lastPackMilliVolts,(int)maxCellV,(int)minCellV
             ,maxPackVState,maxCellVState,minPackVState,minCellVState,maxCellCState,maxPackCState);
         smtpData.setMessage(spb, true);
-        initRelays(false);
+        initRelays();
         inAlertState = true;
       }
     } else if (inAlertState) {
@@ -889,8 +883,6 @@ void dump(AsyncWebServerRequest *request) {
     cells[0][r].dump = !cells[0][r].dump;
     AsyncResponseStream *response = request->beginResponseStream("application/json");
     DynamicJsonDocument doc(100);
-    doc["relay"] = r;
-    doc["val"] = cells[0][r].dump ? "on" : "off";
     doc["success"] = true;
     serializeJson(doc, *response);
     request->send(response);
@@ -1114,7 +1106,18 @@ void saveemail(AsyncWebServerRequest *request){
 }
 
 void onconnect(WiFiEvent_t event, WiFiEventInfo_t info) {
-  Serial.println(WiFi.localIP());
+  switch (event) {
+    case SYSTEM_EVENT_STA_DISCONNECTED:
+      break;
+    case SYSTEM_EVENT_AP_STAIPASSIGNED:
+      Serial.print("STA Ass:");
+      Serial.println(IPAddress(info.ap_staipassigned.ip.addr));
+      break;
+    default:
+      Serial.printf("WIFI: %d:",event);
+      Serial.println(WiFi.localIP());
+      break;
+  }
 }
 
 void WiFiInit() {
@@ -1451,7 +1454,7 @@ void setup() {
     wifiSets.apName[0] = 0;
     wifiSets.apPW[0] = 0;
   }
-  WiFi.onEvent(onconnect, WiFiEvent_t::SYSTEM_EVENT_STA_GOT_IP);
+  WiFi.onEvent(onconnect);
   Serial.println("wifi start");
   WiFiInit();
   Serial.println("Wfif end");
@@ -1494,7 +1497,7 @@ void setup() {
   pinMode(RESISTOR_PWR, OUTPUT);
   for (int i=0;i<RELAY_TOTAL;i++)
     pinMode(relayPins[i],OUTPUT);
-  initRelays(true);
+  initRelays();
   watchDogHits = 0;
   GenUUID();
 
