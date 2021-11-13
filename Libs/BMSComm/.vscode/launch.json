@@ -12,9 +12,9 @@
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug",
-            "executable": "C:/Users/johnt/Documents/ADVBMS/Libs/BMSComm/.pio/build/esp32dev/firmware.elf",
+            "executable": "C:/Users/Admin/Documents/ADVBMS/Libs/BMSComm/.pio/build/esp32dev/firmware.elf",
             "projectEnvName": "esp32dev",
-            "toolchainBinDir": "C:/Users/johnt/.platformio/packages/toolchain-xtensa32/bin",
+            "toolchainBinDir": "C:/Users/Admin/.platformio/packages/toolchain-xtensa32@2.50200.97/bin",
             "internalConsoleOptions": "openOnSessionStart",
             "preLaunchTask": {
                 "type": "PlatformIO",
@@ -25,10 +25,20 @@
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug (skip Pre-Debug)",
-            "executable": "C:/Users/johnt/Documents/ADVBMS/Libs/BMSComm/.pio/build/esp32dev/firmware.elf",
+            "executable": "C:/Users/Admin/Documents/ADVBMS/Libs/BMSComm/.pio/build/esp32dev/firmware.elf",
             "projectEnvName": "esp32dev",
-            "toolchainBinDir": "C:/Users/johnt/.platformio/packages/toolchain-xtensa32/bin",
+            "toolchainBinDir": "C:/Users/Admin/.platformio/packages/toolchain-xtensa32@2.50200.97/bin",
             "internalConsoleOptions": "openOnSessionStart"
+        },
+        {
+            "type": "platformio-debug",
+            "request": "launch",
+            "name": "PIO Debug (without uploading)",
+            "executable": "C:/Users/Admin/Documents/ADVBMS/Libs/BMSComm/.pio/build/esp32dev/firmware.elf",
+            "projectEnvName": "esp32dev",
+            "toolchainBinDir": "C:/Users/Admin/.platformio/packages/toolchain-xtensa32@2.50200.97/bin",
+            "internalConsoleOptions": "openOnSessionStart",
+            "loadMode": "manual"
         }
     ]
 }

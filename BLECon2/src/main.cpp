@@ -1,15 +1,14 @@
 #include <Arduino.h>
-#include <EEPROM.h>
-#include <ArduinoOTA.h>
 #include <Wire.h>
 #include <NimBLEDevice.h>
-#include <PacketSerial.h>
 #include <INA.h>
 
 #include <time.h>
 #include <Ticker.h>
+#include <BMSADC.h>
+#include <BMSCommArd.h>
+#include <CellData.h>
 #include "defines.h"
-#include <BMSComm.h>
 
 // improve server
 // adjustable cell history
@@ -19,49 +18,49 @@
 
 #define AVEADJAVGS 16
 
-char debugstr[200];
 int8_t analCnt=0,curAnal=0;
 bool cellsOverDue = true,loadsOff = true,chgOff = true
-  ,updateINAs=false,writeBattSet=false,writeCellSet=false;
+  ,updateINAs=false,writeStatSets=false,writeDynSets=false,writeCellSet=false,missingCell;
 uint32_t lastSentMillis=0,statusCnt=0,lastHitCnt=0,scanStart=0;
 uint16_t resPwrMS=0;
 Ticker watchDog;
 bool OTAInProg = false;
 
-PacketSerial_<COBS, 0, sizeof(union MaxData)+10> dataSer;
-
 BLEClient* pClients[MAX_CELLS];
 NimBLERemoteCharacteristic* pSettings[MAX_CELLS];
 uint32_t cellDumpSecs[MAX_CELLS];
 uint32_t cellLasts[MAX_CELLS];
+bool cellSentSet[MAX_CELLS];
 
-#define frame (uint8_t)0x00
+const int relayPins[C_RELAY_TOTAL] = { GPIO_NUM_19,GPIO_NUM_18,GPIO_NUM_2,GPIO_NUM_15,GPIO_NUM_13,GPIO_NUM_14,GPIO_NUM_27,GPIO_NUM_26 };
 
-const int relayPins[RELAY_TOTAL] = { GPIO_NUM_19,GPIO_NUM_18,GPIO_NUM_2,GPIO_NUM_15,GPIO_NUM_13,GPIO_NUM_14,GPIO_NUM_27,GPIO_NUM_26 };
-
-struct BattSettings battSets;
-struct BLESettings cellSets;
+NimBLEAddress emptyAddress;
+DynSetts dynSets;
+StatSetts statSets;
+BLESettings cellBLE;
 BMSStatus st;
 char spb[1024];
 
-uint32_t statusMS=0,connectMS=0,shuntPollMS=0,pvPollMS=0,lastSync=0;
+uint32_t statusMS=0,connectMS=0,shuntPollMS=0,pvPollMS=0;
 bool inAlertState = true;
 
-#define MAX_CELLV (battSets.limits[limits::Volt][limits::Cell][limits::Max][limits::Trip])
+#define MAX_CELLV (statSets.limits[LimitConsts::Volt][LimitConsts::Cell][LimitConsts::Max][LimitConsts::Trip])
 NimBLEScan* pBLEScan;
 
 INA_Class         INA;
 int INADevs;
-int milliRolls;
-int32_t lastAdjMillAmpHrs = 0;
-uint32_t lastMillis=0,lastShuntMillis;
+uint32_t lastShuntMillis;
 int64_t milliAmpMillis,battMilliAmpMillis,accumMilliAmpMillis;
-int adjCnt,curAdj;
+int curAdj;
 int64_t aveAdjMilliAmpMillis,curAdjMilliAmpMillis[AVEADJAVGS];
-uint32_t BatAHMeasured = 0;
 int lastTrip;
 
+//char (*__kaboom)[sizeof( BMSStatus )] = 1;
+
 void initState() {
+  st.cmd = Status;
+  st.lastMillis = 0;
+  st.milliRolls = 0;
   st.watchDogHits = 0;
   st.lastPackMilliVolts = 0xffff;
   st.maxDiffMilliVolts = 0;
@@ -72,91 +71,14 @@ void initState() {
   st.maxCellCState=false;st.minCellCState=false;
   st.maxPackCState=false;st.minPackCState=false;
   st.maxChargePctState=false;
-}
-
-uint8_t CRC8(const uint8_t *data,int length) 
-{
-   uint8_t crc = 0x00;
-   uint8_t extract;
-   uint8_t sum;
-   for(int i=0;i<length;i++)
-   {
-      extract = *data;
-      for (uint8_t tempI = 8; tempI; tempI--) 
-      {
-         sum = (crc ^ extract) & 0x01;
-         crc >>= 1;
-         if (sum)
-            crc ^= 0x8C;
-         extract >>= 1;
-      }
-      data++;
-   }
-   return crc;
-}
-
-bool readEE(uint8_t *p,size_t s,uint32_t start) {
-  EEPROM.readBytes(start,p,s);
-  uint8_t checksum = CRC8(p, s);
-  uint8_t ck = EEPROM.read(start+s);
-  return checksum == ck;
-}
-
-void writeEE(uint8_t *p,size_t s,uint32_t start) {
-  uint8_t crc = CRC8(p, s);
-  EEPROM.writeBytes(start,p,s);
-  EEPROM.write(start+s,crc);
-  EEPROM.commit();
+  st.lastAdjMillAmpHrs = 0;
+  st.BatAHMeasured = 0;
 }
 
 void saveStatus() {
-  battSets.milliAmpMillis = milliAmpMillis;
-  battSets.savedTime = time(nullptr);
-  writeBattSet = true;
-  writeEE((uint8_t*)&battSets, sizeof(battSets), EEPROM_BATT);
-}
-
-void InitOTA() {
-    // Port defaults to 3232
-  // ArduinoOTA.setPort(3232);
-
-  // Hostname defaults to esp3232-[MAC]
-  // ArduinoOTA.setHostname("myesp32");
-
-  // No authentication by default
-  // ArduinoOTA.setPassword("admin");
-
-  // Password can be set with it's md5 value as well
-  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
-  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
-  ArduinoOTA
-    .onStart([]() {
-      String type;
-      if (ArduinoOTA.getCommand() == U_FLASH)
-        type = "sketch";
-      else // U_SPIFFS
-        type = "filesystem";
-      OTAInProg = true;
-      // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-      Serial.println("Start updating " + type);
-    })
-    .onEnd([]() {
-      saveStatus();
-      Serial.println("\nEnd");
-    })
-    .onProgress([](unsigned int progress, unsigned int total) {
-      Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-    })
-    .onError([](ota_error_t error) {
-      Serial.printf("Error[%u]: ", error);
-      if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-      else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-      else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-      else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-      else if (error == OTA_END_ERROR) Serial.println("End Failed");
-    });
-
-  ArduinoOTA.begin();
+  dynSets.milliAmpMillis = milliAmpMillis;
+  dynSets.savedTime = time(nullptr);
+  writeEE((uint8_t*)&dynSets, sizeof(dynSets), EEPROM_BATTD);
 }
 
 void getAmps() {
@@ -178,23 +100,23 @@ void getAmps() {
 }
 
 bool doShutOffNoStatus(uint32_t t) {
-  return ((uint32_t)battSets.CellsOutTime < ((millis() - t)*1000) || !st.stateOfChargeValid || st.stateOfCharge < battSets.CellsOutMin || st.stateOfCharge > battSets.CellsOutMax);
+  return ((uint32_t)statSets.CellsOutTime < ((millis() - t)*1000) || !st.stateOfChargeValid || st.stateOfCharge < statSets.CellsOutMin || st.stateOfCharge > statSets.CellsOutMax);
 }
 
-void initRelays() {
-  for (int i=0;i<RELAY_TOTAL;i++) {
+void clearRelays() {
+  for (int i=0;i<C_RELAY_TOTAL;i++) {
     digitalWrite(relayPins[i], LOW);
     st.previousRelayState[i] = LOW;
   }
 }
 
 void doAHCalcs() {
-  if (adjCnt < AVEADJAVGS)
-    adjCnt++;
-  for (int i=0;i<adjCnt;i++)
+  if (st.adjCnt < AVEADJAVGS)
+    st.adjCnt++;
+  for (int i=0;i<st.adjCnt;i++)
     aveAdjMilliAmpMillis += curAdjMilliAmpMillis[i];
-  aveAdjMilliAmpMillis = adjCnt;
-  lastAdjMillAmpHrs = (int32_t)(curAdjMilliAmpMillis[curAdj] / ((int64_t)1000 * 60 * 60));
+  aveAdjMilliAmpMillis = st.adjCnt;
+  st.lastAdjMillAmpHrs = (int32_t)(curAdjMilliAmpMillis[curAdj] / ((int64_t)1000 * 60 * 60));
   curAdj++;
   if (curAdj == AVEADJAVGS)
     curAdj = 0;
@@ -207,29 +129,39 @@ void SendEvent(uint8_t cmd,uint32_t amps=0, uint16_t val=0,int cell=0) {
   evt.cell = cell;
   evt.val = val;
   evt.amps = (uint16_t)(amps/1000000);
-  dataSer.send((byte*)&evt,sizeof(evt));
+  BMSSend(&evt);
 }
 
 void doWatchDog() {
   if (doShutOffNoStatus(statusMS)) {
-    initRelays();
+    clearRelays();
     SendEvent(WatchDog);
   }
   st.watchDogHits++;
-  watchDog.once_ms(1000,doWatchDog); // every second
 }
 
 bool isFromOff(RelaySettings* rs) {
   if (!strlen(rs->from))
     return false;
-  for (int8_t y = 0; y < RELAY_TOTAL; y++)
+  for (int8_t y = 0; y < C_RELAY_TOTAL; y++)
   {
-    RelaySettings *rp = &battSets.relays[y];
+    RelaySettings *rp = &statSets.relays[y];
     if (rp == rs) continue;
     if (!strcmp(rp->name,rs->from))
       return st.previousRelayState[y] == LOW;
   }
   return false;
+}
+
+void sendCellSet(int i) {
+  NimBLEClient*  pC = pClients[i];
+  if (!pC || !pC->isConnected())
+    return;
+  if (!pSettings[i]) {
+    Serial.printf("Badness here\n");
+  }
+  pSettings[i]->writeValue<CellSettings>(dynSets.cellSets,false);
+  cellSentSet[i] = true;
 }
 
 class MyClientCallback : public NimBLEClientCallbacks {
@@ -239,48 +171,31 @@ class MyClientCallback : public NimBLEClientCallbacks {
     this->cell = cell;
   }
   void onConnect(NimBLEClient* pclient) {
-    st.cellConn[cell] = true;
+    st.cells[cell].conn = true;
+    cellSentSet[cell] = false;
     Serial.println("Con");
   }
 
   void onDisconnect(NimBLEClient* pclient) {
-    st.cellConn[cell] = false;
+    st.cells[cell].conn = false;
     Serial.println("Disc");
   }
 };
 
-void sendCellSet(int i) {
-  NimBLEClient*  pC = pClients[i];
-  if (!pC || !pC->isConnected())
-    return;
-  if (!pSettings[i]) {
-    Serial.printf("Badness here\n");
-  }
-  pSettings[i]->writeValue<CellSettings>(cellSets.sets,false);
-}
-
-void syncCell(int i) {
-  BLERemoteService* pServ = pClients[i]->getService(NimBLEUUID((uint16_t)0x180F));
-  cellLasts[i] = 0;
-  if (pServ) {
-    NimBLERemoteCharacteristic* pChar = pServ->getCharacteristic(NimBLEUUID((uint16_t)0x2B45));
-    if (pChar)
-      pChar->writeValue<uint16_t>(1);
-  }
-}
-
-void syncCells() {
-  for (int i=0;i<cellSets.numCells;i++)
-    syncCell(i);
-}
-
 void ConnectCell(int i) {
   NimBLEClient*  pC = pClients[i];
-  if (pC->isConnected())
+  if (!pC) return;
+  if (pC->isConnected()) {
+    if (!cellSentSet[i])
+      sendCellSet(i);
     return;
+  }
   // Connect to the remove BLE Server.
-  if (!pC->connect(BLEAddress(cellSets.addrs[i]),true)) {
-    Serial.printf("Failed to connect: %d, %s\n",i,((std::string)cellSets.addrs[i]).c_str());
+  if (cellBLE.addrs[i] == emptyAddress)
+    return;
+Serial.printf("Connecting: %s\n",cellBLE.addrs[i].toString().c_str());
+  if (!pC->connect(BLEAddress(cellBLE.addrs[i]),true)) {
+    Serial.printf("Failed to connect: %d, %s\n",i,((std::string)cellBLE.addrs[i]).c_str());
     return;
   }
 
@@ -299,9 +214,10 @@ void ConnectCell(int i) {
   pChar->subscribe(true,[i](NimBLERemoteCharacteristic* pBLERemoteCharacteristic,
                               uint8_t* pData, size_t length, bool isNotify) {
           CellStatus* cd = (CellStatus*)pData;
-          st.cellVolts[i] = cd->volts;
-          st.cellTemps[i] = cd->tempExt;
-          st.cellDumping[i] = cd->drainSecs > 0;
+          st.cells[i].volts = cd->volts;
+          st.cells[i].exTemp = cd->tempExt;
+          st.cells[i].bdTemp = cd->tempBd;
+          st.cells[i].dumping = cd->drainSecs > 0;
           cellLasts[i] = millis();
         },false);
   pSettings[i] = pServ->getCharacteristic(NimBLEUUID((uint16_t)0x2B15)); // settings
@@ -309,7 +225,7 @@ void ConnectCell(int i) {
 }
 
 void sendCellSets() {
-  for (int i=0;i<cellSets.numCells;i++)
+  for (int i=0;i<cellBLE.numCells;i++)
     sendCellSet(i);
 }
 
@@ -321,36 +237,40 @@ void InitCell(int i) {
   pC->setClientCallbacks(new MyClientCallback(i),true);
   pC->setConnectionParams(IntervalToms(100),IntervalToms(100),25,600);
   pClients[i] = pC;
-  st.cellDumping[i] = false;
+  st.cells[i].dumping = false;
   cellDumpSecs[i] = 0;
 }
 void InitCells() {
-  for (int i=0;i<cellSets.numCells;i++) {
+  for (int i=0;i<cellBLE.numCells;i++) {
     InitCell(i);
     ConnectCell(i);
   }
 }
 
 void ConnectCells() {
-  for (int i=0;i<cellSets.numCells;i++)
+  for (int i=0;i<cellBLE.numCells;i++)
     ConnectCell(i);
 }
 
+void checkMissingCell() {
+  int i=0;
+  for (;i<cellBLE.numCells && cellBLE.addrs[i] != emptyAddress;i++) ;
+  missingCell = i < cellBLE.numCells;
+  if (missingCell)
+    Serial.printf("Miss: %s\n",cellBLE.addrs[i].toString().c_str());
+  else Serial.println("All Present");
+}
+
 void CheckBLEScan() {
-  if (battSets.nCells > cellSets.numCells && !scanStart) {
+  if ((dynSets.nCells > cellBLE.numCells || missingCell) && !scanStart && dynSets.nCells) {
     Serial.println("Starting scan");
-    pBLEScan->start(0,false);
+    if (doShutOffNoStatus(3000))
+      clearRelays();
+    pBLEScan->start(0,NULL,false);
     scanStart = millis();
-    return;
-  }
-  if (!scanStart)
-    return;
-  uint32_t x = millis() - scanStart;
-  if (x > BLESCANREST) {
-    pBLEScan->stop();
+  } else if (cellBLE.numCells == dynSets.nCells && !missingCell && scanStart) {
+    pBLEScan->stop(); // need to stop scanning to connect
     scanStart = 0;
-  } else if (x > BLESCANTIME && pBLEScan->isScanning()) {
-    pBLEScan->stop(); // need to stop scanning to allow use of radio for other stuff
     Serial.println("Stop scan");
   }
 }
@@ -362,20 +282,18 @@ class adCB: public NimBLEAdvertisedDeviceCallbacks {
               && ad->isAdvertisingService(NimBLEUUID((uint16_t)0x180F))) {
 
         int i=0;
-        for (;i<cellSets.numCells && cellSets.addrs[i] != ad->getAddress();i++) ;
-        Serial.printf("Found %d %d\n",cellSets.numCells,i);
-        if (i==cellSets.numCells && cellSets.numCells < battSets.nCells) {
-          cellSets.numCells++;
-          cellSets.addrs[i] = ad->getAddress();
-          Serial.printf("Add %d: %s\n",i,cellSets.addrs[i].toString().c_str());
+        for (;i<cellBLE.numCells && cellBLE.addrs[i] != ad->getAddress()
+           && cellBLE.addrs[i] != emptyAddress;i++) ;
+        Serial.printf("Found %d %d\n",cellBLE.numCells,i);
+        if (i < dynSets.nCells) {
+          if (i==cellBLE.numCells)
+            cellBLE.numCells++;
+          cellBLE.addrs[i] = ad->getAddress();
+          Serial.printf("Add/Upd %d: %s\n",i,cellBLE.addrs[i].toString().c_str());
           InitCell(i);
           writeCellSet = true;
         }
-        if (cellSets.numCells == battSets.nCells) {
-          pBLEScan->stop(); // need to stop scanning to connect
-          scanStart = 0;
-          Serial.println("Stop scan");
-        }
+        checkMissingCell();
       }
     }
 };
@@ -384,14 +302,20 @@ void checkStatus()
 {
   statusCnt++;
 
-  st.curTemp1 = BMSGetTemp(TEMP1,3200,BCOEF,47000,47000,4);
+  digitalWrite(RESISTOR_PWR,HIGH);
+  if (dynSets.cellSets.delay)
+    delay(dynSets.cellSets.delay);
+  st.curTemp1 = BMSReadTemp(TEMP1,statSets.bdVolts,BCOEF,47000,47000,dynSets.cellSets.cnt);
+  if (!dynSets.cellSets.resPwrOn)
+    digitalWrite(RESISTOR_PWR,LOW);
+
   if (INADevs > 0) {
     if ((st.lastMicroAmps > 0 && chgOff) || (st.lastMicroAmps < 0 && loadsOff)) {
       if (!inAlertState) {
         uint16_t maxCellV = 0;
         uint16_t minCellV = 0xffff;
-        for (int j=0;j<battSets.nCells;j++) {
-          uint16_t cellV = st.cellVolts[j];
+        for (int j=0;j<dynSets.nCells;j++) {
+          uint16_t cellV = st.cells[j].volts;
           if (cellV > maxCellV)
             maxCellV = cellV;
           if (cellV < minCellV)
@@ -402,15 +326,15 @@ void checkStatus()
         snprintf(msg.msg,sizeof(msg.msg),"uA=%d, chg: %d, Lds: %d, pack: %dmV, max cell: %dmV, min cell: %dmV, MxPV: %d, MxCV: %d, MnPV: %d, MnCV %d, MxCC: %d, MxPC: %d"
             ,st.lastMicroAmps,chgOff,loadsOff,(int)st.lastPackMilliVolts,(int)maxCellV,(int)minCellV
             ,st.maxPackVState,st.maxCellVState,st.minPackVState,st.minCellVState,st.maxCellCState,st.maxPackCState);
-        dataSer.send((byte*)&msg,strlen(msg.msg)+sizeof(msg.cmd));
-        initRelays();
+        BMSSend(&msg);
+        clearRelays();
         inAlertState = true;
       }
     } else if (inAlertState) {
       inAlertState = false;
-      StrMsg msg;
+      AMsg msg;
       msg.cmd = NoPanic;
-      dataSer.send((byte*)&msg,sizeof(msg.cmd));
+      BMSSend(&msg);
     }
   }
 
@@ -421,59 +345,64 @@ void checkStatus()
   }
   if (INADevs == 0 || st.lastPackMilliVolts < 1000) { // low side shunt
     st.lastPackMilliVolts = 0;
-    for (int8_t i = 0; i < battSets.nCells; i++)
-      st.lastPackMilliVolts += st.cellVolts[i];
+    for (int8_t i = 0; i < dynSets.nCells; i++)
+      st.lastPackMilliVolts += st.cells[i].volts;
   }
 
   bool allovervoltrec = true,allundervoltrec = true,hitTop=false,hitUnder=false;
   bool allovertemprec = true,allundertemprec = true;
   //Loop through cells
   cellsOverDue = false;
-  for (int8_t i = 0; i < battSets.nCells; i++)
+  for (int8_t i = 0; i < dynSets.nCells; i++)
   {
-    if (!st.cellConn[i] && doShutOffNoStatus(lastSentMillis)) {
+    if (!st.cells[i].conn && doShutOffNoStatus(lastSentMillis)) {
+      clearRelays();
+      if (!cellsOverDue)
+        SendEvent(CellsOverDue);
       cellsOverDue = true;
-      initRelays();
-      SendEvent(CellsOverDue);
       break;
     }
-    uint16_t cellV = st.cellVolts[i];
+    uint16_t cellV = st.cells[i].volts;
 
-    if (cellV > battSets.limits[limits::Volt][limits::Cell][limits::Max][limits::Trip]) {
+    if (cellV > statSets.limits[LimitConsts::Volt][LimitConsts::Cell][LimitConsts::Max][LimitConsts::Trip]) {
       if (!st.maxCellVState) {
+        if (!hitTop)
+          SendEvent(CellTopV,st.lastMicroAmps,cellV,i);
         hitTop = true;
-        SendEvent(CellTopV,st.lastMicroAmps,cellV,i);
       }
       st.maxCellVState = true;
     }
-    if (cellV > battSets.limits[limits::Volt][limits::Cell][limits::Max][limits::Rec])
+    if (cellV > statSets.limits[LimitConsts::Volt][LimitConsts::Cell][LimitConsts::Max][LimitConsts::Rec])
       allovervoltrec = false;
 
-    if (cellV < battSets.limits[limits::Volt][limits::Cell][limits::Min][limits::Trip]) {
+    if (cellV < statSets.limits[LimitConsts::Volt][LimitConsts::Cell][LimitConsts::Min][LimitConsts::Trip]) {
       if (!st.minCellVState) {
+        if (!hitUnder)
+          SendEvent(CellBotV,st.lastMicroAmps,cellV,i);
         hitUnder = true;
-        SendEvent(CellBotV,st.lastMicroAmps,cellV,i);
       }
       st.minCellVState = true;
     }
-    if (cellV < battSets.limits[limits::Volt][limits::Cell][limits::Min][limits::Rec])
+    if (cellV < statSets.limits[LimitConsts::Volt][LimitConsts::Cell][LimitConsts::Min][LimitConsts::Rec])
       allundervoltrec = false;
 
-    int8_t cellT = st.cellTemps[i];
-    if (battSets.useCellC && cellT != -40) {
-      if (cellT > battSets.limits[limits::Temp][limits::Cell][limits::Max][limits::Trip]) {
+    int8_t cellT = st.cells[i].exTemp;
+    if (statSets.useCellC && cellT != -40) {
+      if (cellT > statSets.limits[LimitConsts::Temp][LimitConsts::Cell][LimitConsts::Max][LimitConsts::Trip]) {
+        if (!st.maxCellCState)
+          SendEvent(CellTopT,st.lastMicroAmps,cellT,i);
         st.maxCellCState = true;
-        SendEvent(CellTopT,st.lastMicroAmps,cellT,i);
       }
 
-      if (cellT > battSets.limits[limits::Temp][limits::Cell][limits::Max][limits::Rec])
+      if (cellT > statSets.limits[LimitConsts::Temp][LimitConsts::Cell][LimitConsts::Max][LimitConsts::Rec])
         allovertemprec = false;
 
-      if (cellT < battSets.limits[limits::Temp][limits::Cell][limits::Min][limits::Trip]) {
+      if (cellT < statSets.limits[LimitConsts::Temp][LimitConsts::Cell][LimitConsts::Min][LimitConsts::Trip]) {
+        if (!st.minCellCState)
+          SendEvent(CellBotT,st.lastMicroAmps,cellT,i);
         st.minCellCState = true;
-        SendEvent(CellBotT,st.lastMicroAmps,cellT,i);
       }
-      if (cellT < battSets.limits[limits::Temp][limits::Cell][limits::Min][limits::Rec])
+      if (cellT < statSets.limits[LimitConsts::Temp][LimitConsts::Cell][LimitConsts::Min][LimitConsts::Rec])
         allundertemprec = false;
     }
   }
@@ -481,37 +410,39 @@ void checkStatus()
     st.maxCellVState = false;
   if (st.minCellVState && allundervoltrec)
     st.minCellVState = false;
-  if (!battSets.useCellC || (st.maxCellCState && allovertemprec))
+  if (!statSets.useCellC || (st.maxCellCState && allovertemprec))
     st.maxCellCState = false;
-  if (!battSets.useCellC || (st.minCellCState && allundertemprec))
+  if (!statSets.useCellC || (st.minCellCState && allundertemprec))
     st.minCellCState = false;
 
-  if (battSets.useTemp1) {
-    if (st.curTemp1 > battSets.limits[limits::Temp][limits::Pack][limits::Max][limits::Trip])
+  if (statSets.useTemp1) {
+    if (st.curTemp1 > statSets.limits[LimitConsts::Temp][LimitConsts::Pack][LimitConsts::Max][LimitConsts::Trip])
       st.maxPackCState = true;
-    if (st.curTemp1 < battSets.limits[limits::Temp][limits::Pack][limits::Max][limits::Rec])
+    if (st.curTemp1 < statSets.limits[LimitConsts::Temp][LimitConsts::Pack][LimitConsts::Max][LimitConsts::Rec])
       st.maxPackCState = false;
-    if (st.curTemp1 < battSets.limits[limits::Temp][limits::Pack][limits::Min][limits::Trip])
+    if (st.curTemp1 < statSets.limits[LimitConsts::Temp][LimitConsts::Pack][LimitConsts::Min][LimitConsts::Trip])
       st.minPackCState = true;
-    if (st.curTemp1 > battSets.limits[limits::Temp][limits::Pack][limits::Min][limits::Rec])
+    if (st.curTemp1 > statSets.limits[LimitConsts::Temp][LimitConsts::Pack][LimitConsts::Min][LimitConsts::Rec])
       st.minPackCState = false;
   }
-  if (st.lastPackMilliVolts > battSets.limits[limits::Volt][limits::Pack][limits::Max][limits::Trip]) {
+  if (st.lastPackMilliVolts > statSets.limits[LimitConsts::Volt][LimitConsts::Pack][LimitConsts::Max][LimitConsts::Trip]) {
     if (!st.maxPackVState) {
+      if (!hitTop)
+        SendEvent(PackTopV,st.lastMicroAmps,st.lastPackMilliVolts);
       hitTop = true;
-      SendEvent(PackTopV,st.lastMicroAmps,st.lastPackMilliVolts);
     }
     st.maxPackVState = true;
-  } else if (st.lastPackMilliVolts < battSets.limits[limits::Volt][limits::Pack][limits::Max][limits::Rec])
+  } else if (st.lastPackMilliVolts < statSets.limits[LimitConsts::Volt][LimitConsts::Pack][LimitConsts::Max][LimitConsts::Rec])
     st.maxPackVState = false;
 
-  if (st.lastPackMilliVolts < battSets.limits[limits::Volt][limits::Pack][limits::Min][limits::Trip]) {
+  if (st.lastPackMilliVolts < statSets.limits[LimitConsts::Volt][LimitConsts::Pack][LimitConsts::Min][LimitConsts::Trip]) {
     if (!st.minPackVState) {
+      if (!hitUnder)
+        SendEvent(PackBotV,st.lastMicroAmps,st.lastPackMilliVolts);
       hitUnder = true;
-      SendEvent(PackBotV,st.lastMicroAmps,st.lastPackMilliVolts);
     }
     st.minPackVState = true;
-  } else if (st.lastPackMilliVolts > battSets.limits[limits::Volt][limits::Pack][limits::Min][limits::Rec])
+  } else if (st.lastPackMilliVolts > statSets.limits[LimitConsts::Volt][LimitConsts::Pack][LimitConsts::Min][LimitConsts::Rec])
     st.minPackVState = false;
 
   if (hitTop || hitUnder) {
@@ -520,14 +451,14 @@ void checkStatus()
     else lastHitCnt++;
   } else
     lastHitCnt = 0;
-  hitTop = hitTop && (int32_t)battSets.TopAmps > (st.lastMicroAmps/1000000) && (statusCnt == lastHitCnt); // We don't want to trigger a hittop 
-  hitUnder = hitUnder && (int32_t)-battSets.TopAmps < (st.lastMicroAmps/1000000) && (statusCnt == lastHitCnt);
+  hitTop = hitTop && (int32_t)dynSets.TopAmps > (st.lastMicroAmps/1000000) && (statusCnt == lastHitCnt); // We don't want to trigger a hittop 
+  hitUnder = hitUnder && (int32_t)-dynSets.TopAmps < (st.lastMicroAmps/1000000) && (statusCnt == lastHitCnt);
   if (hitTop) {
     if (lastTrip != 0) {
       if (milliAmpMillis < battMilliAmpMillis)
         curAdjMilliAmpMillis[curAdj] += battMilliAmpMillis - milliAmpMillis;
       if (lastTrip < 0)
-        BatAHMeasured = (milliAmpMillis + curAdjMilliAmpMillis[curAdj]) / ((uint64_t)1000 * 1000 * 60 * 60);
+        st.BatAHMeasured = (milliAmpMillis + curAdjMilliAmpMillis[curAdj]) / ((uint64_t)1000 * 1000 * 60 * 60);
       doAHCalcs();
     }
     lastTrip = 1;
@@ -540,7 +471,7 @@ void checkStatus()
       if (milliAmpMillis > 0)
         curAdjMilliAmpMillis[curAdj] -= milliAmpMillis;
       if (lastTrip > 0)
-        BatAHMeasured = (battMilliAmpMillis - milliAmpMillis + curAdjMilliAmpMillis[curAdj]) / ((uint64_t)1000 * 1000 * 60 * 60);
+        st.BatAHMeasured = (battMilliAmpMillis - milliAmpMillis + curAdjMilliAmpMillis[curAdj]) / ((uint64_t)1000 * 1000 * 60 * 60);
       doAHCalcs();
     }
     lastTrip = -1;
@@ -548,21 +479,21 @@ void checkStatus()
     st.stateOfChargeValid = true;
   }
   if (st.stateOfChargeValid && !st.doFullChg) {
-    if (st.stateOfCharge > battSets.ChargePct)
+    if (st.stateOfCharge > statSets.ChargePct)
       st.maxChargePctState = true;
-    else if (st.stateOfCharge < battSets.ChargePctRec)
+    else if (st.stateOfCharge < statSets.ChargePctRec)
       st.maxChargePctState = false;
   } else
     st.maxChargePctState = false;
 
-  uint8_t relay[RELAY_TOTAL];
+  uint8_t relay[C_RELAY_TOTAL];
   bool wasLoadsOff = loadsOff;
   bool wasChgOff = chgOff;
   loadsOff = st.minCellVState || st.minPackVState || st.maxCellCState || st.maxPackCState;
   chgOff = st.maxChargePctState || st.maxCellVState || st.maxPackVState || st.minCellCState || st.maxCellCState || st.minPackCState || st.maxPackCState;
-  for (int8_t y = 0; y < RELAY_TOTAL; y++)
+  for (int8_t y = 0; y < C_RELAY_TOTAL; y++)
   {
-    RelaySettings *rp = &battSets.relays[y];
+    RelaySettings *rp = &statSets.relays[y];
     if (rp->off)
       relay[y] = LOW;
     else {
@@ -588,7 +519,7 @@ void checkStatus()
       }
     }
   }
-  for (int8_t n = 0; n < RELAY_TOTAL; n++)
+  for (int8_t n = 0; n < C_RELAY_TOTAL; n++)
   {
     if (st.previousRelayState[n] != relay[n])
     {
@@ -604,24 +535,25 @@ void checkStatus()
     st.watchDogHits = 0;
     watchDog.once_ms(CHECKSTATUS+WATCHDOGSLOP,doWatchDog);
   }
+  BMSSend(&st);
 }
 
 void setINAs() {
-  INA.begin(battSets.MaxAmps, battSets.ShuntUOhms,0);
-  INA.begin(battSets.PVMaxAmps,battSets.PVShuntUOhms,1);
+  INA.begin(dynSets.MaxAmps, dynSets.ShuntUOhms,0);
+  INA.begin(dynSets.PVMaxAmps,dynSets.PVShuntUOhms,1);
   INA.setShuntConversion(300,0);
   INA.setBusConversion(300,0);
   INA.setAveraging(10000,0);
-  INA.setShuntConversion(battSets.ConvTime,1);
-  INA.setBusConversion(battSets.ConvTime,1);
-  INA.setAveraging(battSets.Avg,1);
+  INA.setShuntConversion(dynSets.ConvTime,1);
+  INA.setBusConversion(dynSets.ConvTime,1);
+  INA.setAveraging(dynSets.Avg,1);
 }
 
 void setStateOfCharge(int64_t val,bool valid) {
   milliAmpMillis = val;
   st.stateOfChargeValid = valid;
   curAdj = 0;
-  adjCnt = 0;
+  st.adjCnt = 0;
   curAdjMilliAmpMillis[0] = 0;
   lastTrip = 0;
   aveAdjMilliAmpMillis = 0;
@@ -629,42 +561,42 @@ void setStateOfCharge(int64_t val,bool valid) {
 }
 
 void setBattAH() {
-  battMilliAmpMillis = (uint64_t)battSets.BattAH * (1000 * 60 * 60) * 1000; // convert to milliampmilliseconds
+  battMilliAmpMillis = (uint64_t)dynSets.BattAH * (1000 * 60 * 60) * 1000; // convert to milliampmilliseconds
 }
 
-void initCellSets() {
-  cellSets.sets.cnt = 4;
-  cellSets.sets.delay = 0;
-  cellSets.sets.time = 2000;
-  cellSets.numCells = 0;
+void initdynSets() {
+  dynSets.ConvTime = 1000;
+  dynSets.PVMaxAmps = 100;
+  dynSets.PVShuntUOhms = 500;
+  dynSets.ShuntUOhms = 167;
+  dynSets.MaxAmps = 300;
+  dynSets.nCells=0;
+  dynSets.PollFreq = 500;
+  dynSets.BattAH = 1;
+  dynSets.ConvTime = 1000;
+  dynSets.Avg = 1000;
+  dynSets.savedTime = 0;
+  dynSets.milliAmpMillis = 0;
+  dynSets.cellSets.cnt = 4;
+  dynSets.cellSets.delay = 0;
+  dynSets.cellSets.resPwrOn = false;
+  dynSets.cellSets.time = 2000;
+  dynSets.TopAmps = 6;
 }
-
-void initBattSets() {
-  battSets.cmd = BattSets;
-  battSets.ConvTime = 1000;
-  battSets.PVMaxAmps = 100;
-  battSets.PVShuntUOhms = 500;
-  battSets.ShuntUOhms = 167;
-  battSets.MaxAmps = 300;
-  battSets.nCells=0;
-  battSets.PollFreq = 500;
-  battSets.BattAH = 1;
-  battSets.ConvTime = 1000;
-  battSets.useTemp1 = true;
-  battSets.useCellC = true;
-  battSets.ChargePct = 100;
-  battSets.ChargePctRec = 0;
-  battSets.ChargeRate = 0;
-  battSets.CellsOutMax = 80;
-  battSets.CellsOutMin = 30;
-  battSets.CellsOutTime = 120;
-  battSets.FloatV = 3400;
-  battSets.Avg = 1000;
-  battSets.TopAmps = 6;
-  battSets.savedTime = 0;
-  battSets.milliAmpMillis = 0;
-  for (int i=0;i<RELAY_TOTAL;i++) {
-    RelaySettings* r = &battSets.relays[i];
+void initstatSets() {
+  statSets.useTemp1 = true;
+  statSets.useCellC = true;
+  statSets.bdVolts = 3300;
+  statSets.ChargePct = 100;
+  statSets.ChargePctRec = 0;
+  statSets.ChargeRate = 0;
+  statSets.CellsOutMax = 80;
+  statSets.CellsOutMin = 30;
+  statSets.CellsOutTime = 120;
+  statSets.FloatV = 3400;
+  InitRelays(&statSets.relays[0],C_RELAY_TOTAL);
+  for (int i=0;i<C_RELAY_TOTAL;i++) {
+    RelaySettings* r = &statSets.relays[i];
     r->name[0] = 0;
     r->from[0] = 0;
     r->doSoC = false;
@@ -674,16 +606,16 @@ void initBattSets() {
     r->trip = 0;
     r->type = 0;
   }
-  for (int i=limits::Cell;i<limits::Max1;i++) {
+  for (int i=LimitConsts::Cell;i<LimitConsts::Max1;i++) {
     int mul = !i?1:8;
-    battSets.limits[limits::Volt][i][limits::Max][limits::Trip] = 3500 * mul;
-    battSets.limits[limits::Volt][i][limits::Max][limits::Rec] = 3400 * mul;
-    battSets.limits[limits::Volt][i][limits::Min][limits::Trip] = 3100 * mul;
-    battSets.limits[limits::Volt][i][limits::Min][limits::Rec] = 3200 * mul;
-    battSets.limits[limits::Temp][i][limits::Max][limits::Trip] = 50;
-    battSets.limits[limits::Temp][i][limits::Max][limits::Rec] = 45;
-    battSets.limits[limits::Temp][i][limits::Min][limits::Trip] = 4;
-    battSets.limits[limits::Temp][i][limits::Min][limits::Rec] = 7;
+    statSets.limits[LimitConsts::Volt][i][LimitConsts::Max][LimitConsts::Trip] = 3500 * mul;
+    statSets.limits[LimitConsts::Volt][i][LimitConsts::Max][LimitConsts::Rec] = 3400 * mul;
+    statSets.limits[LimitConsts::Volt][i][LimitConsts::Min][LimitConsts::Trip] = 3100 * mul;
+    statSets.limits[LimitConsts::Volt][i][LimitConsts::Min][LimitConsts::Rec] = 3200 * mul;
+    statSets.limits[LimitConsts::Temp][i][LimitConsts::Max][LimitConsts::Trip] = 50;
+    statSets.limits[LimitConsts::Temp][i][LimitConsts::Max][LimitConsts::Rec] = 45;
+    statSets.limits[LimitConsts::Temp][i][LimitConsts::Min][LimitConsts::Trip] = 4;
+    statSets.limits[LimitConsts::Temp][i][LimitConsts::Min][LimitConsts::Rec] = 7;
   }
 }
 
@@ -693,63 +625,51 @@ void DoSetting(uint8_t cmd,uint16_t val) {
       setStateOfCharge((battMilliAmpMillis * val)/100,true);
       break;
     case SetPollFreq:
-      battSets.PollFreq = val;
-      if (battSets.PollFreq < 500)
-        battSets.PollFreq = 500;
+      dynSets.PollFreq = val;
+      if (dynSets.PollFreq < 500)
+        dynSets.PollFreq = 500;
+      break;
+    case SetTopAmps:
+      dynSets.TopAmps = val;
       break;
     case SetBattAH:
-      battSets.BattAH = val;
+      dynSets.BattAH = val;
       setBattAH();
       break;
     case SetNCells:
-      battSets.nCells = val;
-      Serial.printf("NCells: %d\n",battSets.nCells);
-      if (battSets.nCells < cellSets.numCells) {
-        for (int i=battSets.nCells;i<cellSets.numCells;i++) {
+      dynSets.nCells = val;
+      Serial.printf("NCells: %d\n",dynSets.nCells);
+      if (dynSets.nCells < cellBLE.numCells) {
+        for (int i=dynSets.nCells;i<cellBLE.numCells;i++) {
           Serial.printf("Deleting %d\n",i);
           NimBLEDevice::deleteClient(pClients[i]);
-          cellSets.addrs[i] = NimBLEAddress();
+          pClients[i] = NULL;
+          cellBLE.addrs[i] = emptyAddress;
         }
-        cellSets.numCells = battSets.nCells;
+        cellBLE.numCells = dynSets.nCells;
         writeCellSet = true;
-      } else if (battSets.nCells > cellSets.numCells) {
-        for (int i=cellSets.numCells;i<battSets.nCells;i++)
-          cellSets.addrs[i] = NimBLEAddress();
+      } else if (dynSets.nCells > cellBLE.numCells) {
+        for (int i=cellBLE.numCells;i<dynSets.nCells;i++)
+          cellBLE.addrs[i] = emptyAddress;
       }
-      writeCellSet = true;
       break;
     case SetRelayOff: {
-      RelaySettings *rp = &battSets.relays[val];
+      RelaySettings *rp = &statSets.relays[val];
       rp->off = !rp->off;
       }
       break;
-    case SetMaxAmps: battSets.MaxAmps = val; updateINAs = true; break;
-    case SetShuntUOhms: battSets.ShuntUOhms = val; updateINAs = true; break;
-    case SetPVMaxAmps: battSets.PVMaxAmps = val; updateINAs = true; break;
-    case SetPVShuntUOhms: battSets.PVShuntUOhms = val; updateINAs = true; break;
-    case SetAvg: battSets.Avg = val; updateINAs = true; break;
-    case SetConvTime: battSets.ConvTime = val; updateINAs = true; break;
+    case SetMaxAmps: dynSets.MaxAmps = val; updateINAs = true; break;
+    case SetShuntUOhms: dynSets.ShuntUOhms = val; updateINAs = true; break;
+    case SetPVMaxAmps: dynSets.PVMaxAmps = val; updateINAs = true; break;
+    case SetPVShuntUOhms: dynSets.PVShuntUOhms = val; updateINAs = true; break;
+    case SetAvg: dynSets.Avg = val; updateINAs = true; break;
+    case SetConvTime: dynSets.ConvTime = val; updateINAs = true; break;
   }
-  writeBattSet = true;
+  writeDynSets = true;
 }
 
-void DoCellSetting(uint8_t cmd,uint16_t val) {
-  switch (cmd) {
-    case SetCellCnt:
-      cellSets.sets.cnt = val;
-      if (cellSets.sets.cnt < 1)
-        cellSets.sets.cnt = 1;
-      break;
-    case SetCellDelay:
-      cellSets.sets.delay = val;
-      break;
-    case SetCellTime:
-      cellSets.sets.time = val;
-      break;
-  }
-  writeCellSet = true;
-}
 void DoDump(DumpMsg *dm) {
+  Serial.println("Doing dump\n");
     if (cellDumpSecs[dm->cell])
       cellDumpSecs[dm->cell] = 0;
     else cellDumpSecs[dm->cell] = dm->secs;
@@ -763,117 +683,133 @@ void DoDump(DumpMsg *dm) {
     }
 }
 
-// dataSer.send((byte*)debugstr,strlen(debugstr)+2);
-void onSerData(const uint8_t *receivebuffer, size_t len)
+void JTPrint(const std::string &ad) {
+  Serial.printf("FFF: %s %d\n",ad.c_str(),ad.length());
+}
+void DoForget(SettingMsg *mp) {
+  if (mp->val >= MAX_CELLS)
+    return;
+  missingCell = true;
+  if (!pClients[mp->val]) return;
+  if (cellBLE.addrs[mp->val] == emptyAddress) {
+    Serial.printf("%d empty: %s\n",mp->val,cellBLE.addrs[mp->val].toString().c_str());
+    return;
+  }
+  NimBLEDevice::deleteClient(pClients[mp->val]);
+  Serial.printf("Forgetting: %s\n",cellBLE.addrs[mp->val].toString().c_str());
+  pClients[mp->val] = NULL;
+  cellBLE.addrs[mp->val] = emptyAddress;
+  st.cells[mp->val].volts = 0;
+  st.cells[mp->val].conn = 0;
+  writeCellSet = true;
+}
+
+void ConSerData(const AMsg *mp)
 {
-  digitalWrite(GREEN_LED,1);
-  uint8_t cmd = *receivebuffer;
-  if (cmd > FirstSetting && cmd < LastSetting)
-    DoSetting(cmd,((SettingMsg*)receivebuffer)->val);
-  else if (cmd > FirstCellSetting && cmd < LastCellSetting)
-    DoCellSetting(cmd,((SettingMsg*)receivebuffer)->val);
-  else switch (cmd) {
-    case DumpCell: DoDump((DumpMsg*)receivebuffer); break;
+  if (mp->cmd > FirstSetting && mp->cmd < LastSetting)
+    DoSetting(mp->cmd,((SettingMsg*)mp)->val);
+  else switch (mp->cmd) {
+    case SetCellSetts: {
+        dynSets.cellSets = ((CellSetts*)mp)->cellSets;
+        sendCellSets();
+        writeDynSets = true;
+      }
+      break;
+    case ForgetCell: DoForget((SettingMsg*)mp); break;
+    case DumpCell: DoDump((DumpMsg*)mp); break;
     case FullChg: st.doFullChg = !st.doFullChg; break;
     case ClrMaxDiff: st.maxDiffMilliVolts = 0; break;
-    case BattSets: dataSer.send((byte*)&battSets,sizeof(battSets));
-
+    case StatQuery: BMSSend(&statSets); break;
+    case DynQuery: BMSSend(&dynSets); break;
+    case StatSets: statSets = *(StatSetts*)mp; writeStatSets=true; break;
   }
-    
-
-  digitalWrite(GREEN_LED,0);
 }
 
 void setup() {
-  BMSInit();
+  Serial.begin(9600);
+  BMSADCInit();
+  adc1_config_channel_atten(ADC1_CHANNEL_7, ADC_ATTEN_DB_11);
+
   pinMode(GREEN_LED, OUTPUT);
   pinMode(RESISTOR_PWR, OUTPUT);
   digitalWrite(GREEN_LED,1);
-  Serial.begin(9600);
-  EEPROM.begin(EEPROMSize);
+  BMSInitCom(EEPROMSize,ConSerData);
   Wire.begin();
   for (int i=0;i<MAX_CELLS;i++) pClients[i] = NULL;
 
   NimBLEDevice::init("");
+  emptyAddress = NimBLEAddress("00:00:00:00:00:00");
+  Serial.printf("EA: %s\n",emptyAddress.toString().c_str());
   pBLEScan = NimBLEDevice::getScan();
   pBLEScan->setAdvertisedDeviceCallbacks(new adCB(), false);
   pBLEScan->setMaxResults(0); // do not store the scan results, use callback only.
 
-  Serial2.begin(CPUBAUD);
-  dataSer.setStream(&Serial2); // start serial for output
-  dataSer.setPacketHandler(&onSerData);
+  if (!readEE((uint8_t*)&statSets,sizeof(statSets),EEPROM_BATTS))
+    initstatSets();
 
-  if (!readEE((uint8_t*)&battSets,sizeof(battSets),EEPROM_BATT))
-    initBattSets();
+  if (!readEE((uint8_t*)&dynSets,sizeof(dynSets),EEPROM_BATTD))
+    initdynSets();
 
-  if (!readEE((uint8_t*)&cellSets,sizeof(cellSets),EEPROM_BLE))
-    initCellSets();
+  if (!readEE((uint8_t*)&cellBLE,sizeof(cellBLE),EEPROM_BLE))
+    cellBLE.numCells = 0;
 
-  Serial.printf("ncells %d\n",cellSets.numCells);
-  
-  for (int i=0;i<RELAY_TOTAL;i++)
+  Serial.printf("ncells %d\n",cellBLE.numCells);
+  checkMissingCell();
+  dynSets.cmd = DynSets;
+  statSets.cmd = StatSets;
+
+  for (int i=0;i<C_RELAY_TOTAL;i++)
     pinMode(relayPins[i],OUTPUT);
-  initRelays();
+  clearRelays();
   initState();
-  INADevs = INA.begin(battSets.MaxAmps, battSets.ShuntUOhms);
+  INADevs = INA.begin(dynSets.MaxAmps, dynSets.ShuntUOhms);
   lastShuntMillis = millis();
   setBattAH();
   if (INADevs)
     setINAs();
 
   configTime(0,0,"pool.ntp.org");
-  InitOTA();
   setStateOfCharge((battMilliAmpMillis * 4)/5,false);
   InitCells();
-  dataSer.send((byte*)&battSets,sizeof(battSets));
+  BMSSend(&statSets); 
+  BMSSend(&dynSets); 
   digitalWrite(GREEN_LED,0);
 }
 
 time_t saveTimeDiff = 0;
 void loop() {
-  if (lastMillis > millis()) milliRolls++;
-  lastMillis = millis(); // for uptime to continue after 50 days
+  if (st.lastMillis > millis()) st.milliRolls++;
+  st.lastMillis = millis(); // for uptime to continue after 50 days
 
-  if (battSets.savedTime) {
+  if (dynSets.savedTime) {
     time_t now = time(nullptr);
-    if ((now - battSets.savedTime) < 60) {
-      setStateOfCharge(battSets.milliAmpMillis,true);
-      battSets.savedTime = 0;
-      battSets.milliAmpMillis = 0;
-      writeBattSet = true;
-    } else if (saveTimeDiff && saveTimeDiff < (now - battSets.savedTime)) {
+    if ((now - dynSets.savedTime) < 60) {
+      setStateOfCharge(dynSets.milliAmpMillis,true);
+      dynSets.savedTime = 0;
+      dynSets.milliAmpMillis = 0;
+      writeDynSets = true;
+    } else if (saveTimeDiff && saveTimeDiff < (now - dynSets.savedTime)) {
       // difference is growing so give up
-      battSets.savedTime = 0;
-      battSets.milliAmpMillis = 0;
-      writeBattSet = true;
-    } else saveTimeDiff = now - battSets.savedTime;
+      dynSets.savedTime = 0;
+      dynSets.milliAmpMillis = 0;
+      writeDynSets = true;
+    } else saveTimeDiff = now - dynSets.savedTime;
   }
-  dataSer.update();
-  if (writeBattSet) {
-    writeEE((uint8_t*)&battSets, sizeof(battSets), EEPROM_BATT);
-    writeBattSet = false;
+  if (writeDynSets) {
+    writeEE((uint8_t*)&dynSets, sizeof(dynSets), EEPROM_BATTD);
+    writeDynSets = false;
+  } else if (writeStatSets) {
+    writeEE((uint8_t*)&statSets, sizeof(statSets), EEPROM_BATTS);
+    writeStatSets = false;
   } else if (writeCellSet) {
-    writeEE((uint8_t*)&cellSets,sizeof(cellSets),EEPROM_BLE);
+    writeEE((uint8_t*)&cellBLE,sizeof(cellBLE),EEPROM_BLE);
     writeCellSet = false;
-  } else if (cellSets.numCells > 1 && ((millis() - lastSync) > cellSets.sets.time * 3)) {
-    uint32_t min=0xffffffff,max=0;
-    int i=0;
-    for (;i<cellSets.numCells && st.cellConn[i];i++) {
-      if (cellLasts[i] > max)
-        max = cellLasts[i];
-      if (cellLasts[i] < min)
-        min = cellLasts[i];
-    }
-    if (i == cellSets.numCells && (max - min) < (cellSets.sets.time-300) && (max-min) > 100) {
-      syncCells();
-      Serial.printf("%d,%d,%d,%d\n",min,max,max-min,cellSets.sets.time);
-    }
   }
   if (INADevs > 0) {
     if (updateINAs)
      setINAs();
     updateINAs = false;
-    if ((millis() - shuntPollMS) > battSets.PollFreq) {
+    if ((millis() - shuntPollMS) > dynSets.PollFreq) {
       getAmps();
       shuntPollMS = millis();
     }
@@ -883,11 +819,15 @@ void loop() {
     }
   }
 
+  if ((millis() - statusMS) > CHECKSTATUS) {
+    checkStatus();
+    statusMS = millis();
+  }
+
   if ((millis() - connectMS) > CHECKCONNECT) {
     ConnectCells();
     connectMS = millis();
   }
+  BMSGetSerial();
   CheckBLEScan();
-
-  ArduinoOTA.handle(); // this does nothing until it is initialized
 }

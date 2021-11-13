@@ -16,7 +16,7 @@ body {
 .fullChg { background-color: lightgray;}
 .dumping { background-color: pink;}
 
-#uptime,#temp1,#celltemp,#pkts {
+.rt {
     float: right;
 }
 .stat {
@@ -126,6 +126,12 @@ label.samples {
     width: 3em;
 }
 
-#cells label {
+#relays label {
+    width: 2em;
+}
+#BurnDur label {    
+    width: 4em;
+}
+#cellsRow label,#YScale label {
     width: 3.5em;
 }

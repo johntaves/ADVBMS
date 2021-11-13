@@ -16,7 +16,7 @@ $(function () {
         $('#menu > a').removeClass("active");
         $(this).addClass("active");
         showContent($(this).attr("href"));
-        getSettings();
+        getSettings($(this).attr("href"));
         event.preventDefault();
     });
     $(".error,.success").hide();
@@ -75,7 +75,7 @@ $(function () {
 });
 
 var RELAY_TOTAL=0;
-var nCells=0;
+var nCells=-1;
 var myChart,config;
 var nonCellLines = 3;
 
@@ -196,6 +196,7 @@ function initCells() {
     }
     myChart.update();
     $("[cellval]").remove();
+    $("[celldel]").remove();
     for (var rel=0;rel<nCells;rel++) {
         var temp = $("#cellTV").clone();
         temp.attr({id: "cellTV"+rel});
@@ -221,101 +222,98 @@ function initCells() {
             return false;
          });
         temp.show();
+
+        temp = $("#cellDel").clone();
+        temp.find(".h").text('#'+rel).css("background-color", colors[rel]);
+        temp.attr({id: "cellDel"+rel});
+        temp.attr({celldel: true});
+        var theA = temp.find("a");
+        theA.attr("cell",rel);
+        theA.click(function () {
+            var r = $(this).attr("cell");
+            $.ajax({
+                type: "POST",
+                url: "/forget",
+                data: { cell: r },
+                dataType:'json',
+                success: function (data) {
+                    $("#savesuccess").show().delay(2000).fadeOut(500);
+                },
+                error: function (data) {
+                    $("#saveerror").show().delay(2000).fadeOut(500);
+                }
+            });
+            return false;
+         });
+        temp.insertBefore("#cellDel");
+        temp.show();
     }
 }
 
-function getSettings() {
-    $.getJSON("settings",
+function getSettings(s) {
+    $.getJSON(s,
         function (data) {
-            if (!data.cmd)
+            if (data.notRecd) {
+                $("#errmess").show().text("Settings not received");
                 return;
-            $("input[name='apName']").val(data.apName);
-            $("input[name='apPW']").val("");
-            $("input[name='password']").val("");
-            $("input[name='email']").val(data.email);
-            $("input[name='senderEmail']").val(data.senderEmail);
-            $("input[name='senderServer']").val(data.senderServer);
-            $("input[name='senderPort']").val(data.senderPort);
-            $("input[name='senderSubject']").val(data.senderSubject);
-            $("input[name='logEmail']").val(data.logEmail);
-            $("input[name='doLogging']").prop("checked", data.doLogging);
+            }
+            $("#errmess").hide();
+            if (s == "net") {
+                $("input[name='apName']").val(data.apName);
+                $("input[name='apPW']").val("");
+                $("input[name='password']").val("");
+                $("input[name='email']").val(data.email);
+                $("input[name='senderEmail']").val(data.senderEmail);
+                $("input[name='senderServer']").val(data.senderServer);
+                $("input[name='senderPort']").val(data.senderPort);
+                $("input[name='senderSubject']").val(data.senderSubject);
+                $("input[name='logEmail']").val(data.logEmail);
+                $("input[name='doLogging']").prop("checked", data.doLogging);
+                $("input[name='ssid']").val(data.ssid);
+            } else if (s == "cells") {
+            } else if (s == "batt") {
+                $("#Avg").val(data.Avg);
+                $("#ConvTime").val(data.ConvTime);
+                $("#BattAH").val(data.BattAH);
+                $("#socLastAdj").html(data.socLastAdj);
+                $("#socAvgAdj").html(data.socAvgAdj);
+                $("#BatAHMeasured").html(data.BatAHMeasured);
+                $("#MaxAmps").val(data.MaxAmps);
+                $("#PVMaxAmps").val(data.PVMaxAmps);
+                $("#ShuntUOhms").val(data.ShuntUOhms);
+                $("#PVShuntUOhms").val(data.PVShuntUOhms);
+                $("#nCells").val(data.nCells);
+                $("#CurSOC").val('');
+                $("#TopAmps").val(data.TopAmps);
+                $("#PollFreq").val(data.PollFreq);
+                $("input[name='cellCnt']").val(data.cellCnt);
+                $("input[name='cellDelay']").val(data.cellDelay);
+                $("input[name='resPwrOn']").prop("checked", data.resPwrOn);
+                $("input[name='cellTime']").val(data.cellTime);
+            } else if (s == "limits") {
+                $("#ChargePct").val(data.ChargePct);
+                $("#ChargePctRec").val(data.ChargePctRec);
+                $("#FloatV").val(data.FloatV);
+                $("#ChargeRate").val(data.ChargeRate);
+                $("#CellsOutMin").val(data.CellsOutMin);
+                $("#CellsOutMax").val(data.CellsOutMax);
+                $("#CellsOutTime").val(data.CellsOutTime);
+                $("#bdVolts").val(data.bdVolts);
 
-            $("#Avg").val(data.Avg);
-            $("#ConvTime").val(data.ConvTime);
-            $("#BattAH").val(data.BattAH);
-            $("#TopAmps").val(data.TopAmps);
-            $("#socLastAdj").html(data.socLastAdj);
-            $("#socAvgAdj").html(data.socAvgAdj);
-            $("#BatAHMeasured").html(data.BatAHMeasured);
-            $("#MaxAmps").val(data.MaxAmps);
-            $("#PVMaxAmps").val(data.PVMaxAmps);
-            $("#ShuntUOhms").val(data.ShuntUOhms);
-            $("#PVShuntUOhms").val(data.PVShuntUOhms);
-            $("#nCells").val(data.nCells);
-            $("#ChargePct").val(data.ChargePct);
-            $("#ChargePctRec").val(data.ChargePctRec);
-            $("#FloatV").val(data.FloatV);
-            $("#ChargeRate").val(data.ChargeRate);
-            $("#CellsOutMin").val(data.CellsOutMin);
-            $("#CellsOutMax").val(data.CellsOutMax);
-            $("#CellsOutTime").val(data.CellsOutTime);
-            
-            $.each(data.tempSettings,function (index,value) {
-                $("#bCoef"+index).val(value.bCoef);
-                $("#addr"+index).val(value.addr);
-                $("#mul"+index).val(value.mul);
-                $("#div"+index).val(value.div);
-                $("#range"+index).val(value.range);
-            });
+                $.each(data.limitSettings, function (index, value) {
+                    $("#" + index).val(value);
+                });
+                $("#useTemp1").prop("checked", data.useTemp1);
+                $("#useCellC").prop("checked", data.useCellC);
 
-            $.each(data.cellSettings,function (index,value) {
-                $("#cellCbCoef"+index).val(value.bCoef);
-                $("#cellCaddr"+index).val(value.cellCaddr);
-                $("#cellCmul"+index).val(value.cellCmul);
-                $("#cellCdiv"+index).val(value.cellCdiv);
-                $("#cellCrange"+index).val(value.cellCrange);
-                $("#celladdr"+index).val(value.celladdr);
-                $("#cellmul"+index).val(value.cellmul);
-                $("#celldiv"+index).val(value.celldiv);
-                $("#cellrange"+index).val(value.cellrange);
-                for (var i=0;i<4;i++) {
-                    if (value["samp"+i]) {
-                        $("#samp"+i+"_"+index).val(value["samp"+i]);
-                        $("#sampadc"+i+"_"+index).text(value["sampadc"+i]);
-                        $("#sampt"+i+"_"+index).text(value["sampt"+i]);
-                    } else {
-                        $("#samp"+i+"_"+index).val('');
-                        $("#sampadc"+i+"_"+index).text('');
-                        $("#sampt"+i+"_"+index).text('');
-                    }
-               }
-                var b = value.sampb;
-                $("#sampb"+index).text(b / 10000.0);
-                $("#sampa"+index).text(value.sampa);
-            });
-
-            $("#CurSOC").val('');
-            $("#PollFreq").val(data.PollFreq);
-            $("input[name='ssid']").val(data.ssid);
-
-            $("input[name='cellCnt']").val(data.cellCnt);
-            $("input[name='cellDelay']").val(data.cellDelay);
-            $("input[name='cellTime']").val(data.cellTime);
-
-            $.each(data.limitSettings, function (index, value) {
-                $("#" + index).val(value);
-            });
-            $("#useTemp1").prop("checked", data.useTemp1);
-            $("#useCellC").prop("checked", data.useCellC);
-
-            $.each(data.relaySettings, function (index, value) {
-                $("#relayName" + index).val(value.name);
-                $("#relayFrom" + index).val(value.from);
-                setRelayType.call($("#relayType" + index).val(value.type));
-                $("#relayTrip" + index).val(value.trip);
-                $("#relayRec" + index).val(value.rec);
-            });
-    
+                $.each(data.relaySettings, function (index, value) {
+                    $("#relayName" + index).val(value.name);
+                    $("#relayFrom" + index).val(value.from);
+                    setRelayType.call($("#relayType" + index).val(value.type));
+                    $("#relayTrip" + index).val(value.trip);
+                    $("#relayRec" + index).val(value.rec);
+                });
+            }
         }).fail(function () { }
         );
     return true;
@@ -419,7 +417,8 @@ function queryBMS() {
             val = "under " + val;
         $("#temp1 .v").html(val);
 
-        $("#uptime .v").html(data.uptime);
+        $("#uptimec .v").html(data.uptimec);
+        $("#uptimew .v").html(data.uptimew);
 
         $("#nocontroller").hide();
 
@@ -458,14 +457,14 @@ function queryBMS() {
                 if (value.t > -101)
                     $("#cellTV"+value.c+" .t").html(value.t);
                 else $("#cellTV"+value.c+" .t").html("");
-                cell.text(formatNum(valV,3));
+                cell.text(formatNum(valV,2));
             } else cell.text('');
             if (value.d) cell.addClass("dumping");
             else cell.removeClass("dumping");
         });
         myChart.update();
         setTimeout(queryBMS, pollFreq);
-    }).fail(function () {
+    }).fail(function (a,b,c) {
         $("#nocontroller").show();
         setTimeout(queryBMS, pollFreq);
     });
