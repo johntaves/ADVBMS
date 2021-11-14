@@ -383,10 +383,7 @@ function queryBMS() {
 
         var pc = Number(data.packcurrent);
         var pvc = Number(data.pvcurrent);
-        var lc = (pvc - pc)/1000;
-        pc = pc / 1000;
-        pvc = pvc / 1000;
-        $("#loadcurrent .v").html(formatNum(lc,2));
+        $("#loadcurrent .v").html(formatNum(pvc - pc,2));
         $("#packcurrent .v").html(formatNum(pc,2));
         $("#pvcurrent .v").html(formatNum(pvc,2));
         $("#soc .v").html(data.soc);

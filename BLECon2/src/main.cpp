@@ -173,12 +173,18 @@ class MyClientCallback : public NimBLEClientCallbacks {
   void onConnect(NimBLEClient* pclient) {
     st.cells[cell].conn = true;
     cellSentSet[cell] = false;
-    Serial.println("Con");
+    SettingMsg ms;
+    ms.cmd = ConnCell;
+    ms.val = cell;
+    BMSSend(&ms);
   }
 
   void onDisconnect(NimBLEClient* pclient) {
     st.cells[cell].conn = false;
-    Serial.println("Disc");
+    SettingMsg ms;
+    ms.cmd = DiscCell;
+    ms.val = cell;
+    BMSSend(&ms);
   }
 };
 

@@ -33,7 +33,9 @@ enum Msg {
   SetCellSetts,
   StatSets,DynSets,Status,
   DumpCell,
-  ForgetCell
+  ForgetCell,
+  ConnCell,
+  DiscCell
 
 };
 

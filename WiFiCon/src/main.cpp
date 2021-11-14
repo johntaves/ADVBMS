@@ -715,11 +715,16 @@ void checkStatus()
 void WonSerData(const AMsg *mp)
 {
   switch(mp->cmd) {
+    case DiscCell:
+    case ConnCell: 
+      trimLastEventMsg();
+      snprintf(lastEventMsg,sizeof(lastEventMsg),"%s %s %d | ",lastEventMsg,mp->cmd == DiscCell?"D":"C"
+          ,((SettingMsg*)mp)->val);
+      break;
     case StatSets: statSets = *(StatSetts*)mp; break;
     case DynSets: dynSets = *(DynSetts*)mp; break;
     case DebugStr:
-      snprintf(debugstr,sizeof(debugstr),"BS Happened");
-//      snprintf(debugstr,sizeof(debugstr),"%s",((StrMsg*)mp)->msg);
+      snprintf(debugstr,sizeof(debugstr),"%s",((StrMsg*)mp)->msg);
       break;
     case Status:
       st = *(BMSStatus*)mp;
