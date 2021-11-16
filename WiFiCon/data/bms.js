@@ -224,10 +224,10 @@ function initCells() {
         temp.show();
 
         temp = $("#cellDel").clone();
-        temp.find(".h").text('#'+rel).css("background-color", colors[rel]);
+        temp.find("span").text('#'+rel+":").css("background-color", colors[rel]);
         temp.attr({id: "cellDel"+rel});
         temp.attr({celldel: true});
-        var theA = temp.find("a");
+        var theA = temp.find("a[forget]");
         theA.attr("cell",rel);
         theA.click(function () {
             var r = $(this).attr("cell");
@@ -245,6 +245,24 @@ function initCells() {
             });
             return false;
          });
+        var theI = temp.find("a[move]");
+        theI.attr("cell",rel);
+        theI.attr({id: "cellMove"+rel});
+        theI.click(function() {
+            var r = $(this).attr("cell");
+            $.ajax({
+                type: "POST",
+                url: "/move",
+                data: { cell: r },
+                dataType:'json',
+                success: function (data) {
+                    $("#savesuccess").show().delay(2000).fadeOut(500);
+                },
+                error: function (data) {
+                    $("#saveerror").show().delay(2000).fadeOut(500);
+                }
+            });
+        });
         temp.insertBefore("#cellDel");
         temp.show();
     }
@@ -383,7 +401,10 @@ function queryBMS() {
 
         var pc = Number(data.packcurrent);
         var pvc = Number(data.pvcurrent);
-        $("#loadcurrent .v").html(formatNum(pvc - pc,2));
+        var lc = (pvc - pc)/1000;
+        pc = pc / 1000;
+        pvc = pvc / 1000;
+        $("#loadcurrent .v").html(formatNum(lc,2));
         $("#packcurrent .v").html(formatNum(pc,2));
         $("#pvcurrent .v").html(formatNum(pvc,2));
         $("#soc .v").html(data.soc);
@@ -456,8 +477,14 @@ function queryBMS() {
                 else $("#cellTV"+value.c+" .t").html("");
                 cell.text(formatNum(valV,2));
             } else cell.text('');
-            if (value.d) cell.addClass("dumping");
-            else cell.removeClass("dumping");
+            var inp = $("#cellMove"+value.c);
+            if (value.d) {
+                cell.addClass("dumping");
+                inp.addClass("dumping");
+            } else {
+                cell.removeClass("dumping");
+                inp.removeClass("dumping");
+            }
         });
         myChart.update();
         setTimeout(queryBMS, pollFreq);

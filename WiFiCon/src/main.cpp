@@ -363,6 +363,19 @@ void forget(AsyncWebServerRequest *request) {
 
   } else request->send(500, "text/plain", "Missing parameters");
 }
+void doMove(AsyncWebServerRequest *request) {
+  if (request->hasParam("cell", true)) {
+    SettingMsg dm;
+    dm.cmd = MoveCell;
+    dm.val = request->getParam("cell", true)->value().toInt();
+    BMSSend(&dm);
+    AsyncResponseStream *response = request->beginResponseStream("application/json");
+    DynamicJsonDocument doc(100);
+    doc["success"] = true;
+    serializeJson(doc, *response);
+    request->send(response);
+  } else request->send(500, "text/plain", "Missing parameters");
+}
 char *getUpTimeStr(uint32_t ms,uint8_t rolls) {
   uint32_t upsecs = (rolls * 4294967ul) + (ms/1000ul);
   int days = upsecs / (24ul*60*60);
@@ -665,6 +678,7 @@ void startServer() {
   server.on("/clrMaxDiff", HTTP_GET, clrMaxDiff);
   server.on("/dump", HTTP_POST, dump);
   server.on("/forget", HTTP_POST, forget);
+  server.on("/move", HTTP_POST, doMove);
   server.on("/savewifi", HTTP_POST, savewifi);
   server.on("/savecapacity", HTTP_POST, savecapacity);
   server.on("/savecellset", HTTP_POST, savecellset);

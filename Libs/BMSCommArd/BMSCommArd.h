@@ -35,7 +35,8 @@ enum Msg {
   DumpCell,
   ForgetCell,
   ConnCell,
-  DiscCell
+  DiscCell,
+  MoveCell
 
 };
 

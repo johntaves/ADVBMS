@@ -44,6 +44,13 @@ body {
     background-color: #B8ACDE;
 }
 
+#cellDivRow a {
+    text-decoration: underline;
+}
+
+#cellDivRow input {
+    width: 3em;
+}
 #menu a {
     color: white;
     text-decoration: none;

@@ -26,11 +26,19 @@ uint16_t resPwrMS=0;
 Ticker watchDog;
 bool OTAInProg = false;
 
-BLEClient* pClients[MAX_CELLS];
-NimBLERemoteCharacteristic* pSettings[MAX_CELLS];
-uint32_t cellDumpSecs[MAX_CELLS];
-uint32_t cellLasts[MAX_CELLS];
-bool cellSentSet[MAX_CELLS];
+class MyClientCallback;
+
+struct Cell {
+  NimBLEClient* pClient;
+  NimBLERemoteCharacteristic* pChar;
+  MyClientCallback* pCB;
+  NimBLERemoteCharacteristic* pSettings;
+  uint32_t cellDumpSecs,cellLast;
+  bool cellSentSet;
+};
+
+Cell cells[MAX_CELLS];
+SemaphoreHandle_t xMut;
 
 const int relayPins[C_RELAY_TOTAL] = { GPIO_NUM_19,GPIO_NUM_18,GPIO_NUM_2,GPIO_NUM_15,GPIO_NUM_13,GPIO_NUM_14,GPIO_NUM_27,GPIO_NUM_26 };
 
@@ -154,25 +162,25 @@ bool isFromOff(RelaySettings* rs) {
 }
 
 void sendCellSet(int i) {
-  NimBLEClient*  pC = pClients[i];
+  NimBLEClient*  pC = cells[i].pClient;
   if (!pC || !pC->isConnected())
     return;
-  if (!pSettings[i]) {
+  if (!cells[i].pSettings) {
     Serial.printf("Badness here\n");
   }
-  pSettings[i]->writeValue<CellSettings>(dynSets.cellSets,false);
-  cellSentSet[i] = true;
+  cells[i].pSettings->writeValue<CellSettings>(dynSets.cellSets,false);
+  cells[i].cellSentSet = true;
 }
 
 class MyClientCallback : public NimBLEClientCallbacks {
-  int cell;
   public:
+  int cell;
   MyClientCallback(int cell) {
     this->cell = cell;
   }
   void onConnect(NimBLEClient* pclient) {
     st.cells[cell].conn = true;
-    cellSentSet[cell] = false;
+    cells[cell].cellSentSet = false;
     SettingMsg ms;
     ms.cmd = ConnCell;
     ms.val = cell;
@@ -189,10 +197,10 @@ class MyClientCallback : public NimBLEClientCallbacks {
 };
 
 void ConnectCell(int i) {
-  NimBLEClient*  pC = pClients[i];
+  NimBLEClient*  pC = cells[i].pClient;
   if (!pC) return;
   if (pC->isConnected()) {
-    if (!cellSentSet[i])
+    if (!cells[i].cellSentSet)
       sendCellSet(i);
     return;
   }
@@ -217,16 +225,20 @@ Serial.printf("Connecting: %s\n",cellBLE.addrs[i].toString().c_str());
     pC->disconnect();
     return;
   }
-  pChar->subscribe(true,[i](NimBLERemoteCharacteristic* pBLERemoteCharacteristic,
+  cells[i].pChar = pChar;
+  pChar->subscribe(true,[](NimBLERemoteCharacteristic* pBLERemoteCharacteristic,
                               uint8_t* pData, size_t length, bool isNotify) {
+          int i=0;
+          for (;i<cellBLE.numCells && cells[i].pChar != pBLERemoteCharacteristic;i++) ;
+          if (i == cellBLE.numCells) return;
           CellStatus* cd = (CellStatus*)pData;
           st.cells[i].volts = cd->volts;
           st.cells[i].exTemp = cd->tempExt;
           st.cells[i].bdTemp = cd->tempBd;
           st.cells[i].dumping = cd->drainSecs > 0;
-          cellLasts[i] = millis();
+          cells[i].cellLast = millis();
         },false);
-  pSettings[i] = pServ->getCharacteristic(NimBLEUUID((uint16_t)0x2B15)); // settings
+  cells[i].pSettings = pServ->getCharacteristic(NimBLEUUID((uint16_t)0x2B15)); // settings
   sendCellSet(i);
 }
 
@@ -240,22 +252,24 @@ void sendCellSets() {
 void InitCell(int i) {
   NimBLEClient*  pC  = NimBLEDevice::createClient();
 
-  pC->setClientCallbacks(new MyClientCallback(i),true);
+  cells[i].pCB = new MyClientCallback(i);
+  pC->setClientCallbacks(cells[i].pCB,true);
   pC->setConnectionParams(IntervalToms(100),IntervalToms(100),25,600);
-  pClients[i] = pC;
+  cells[i].pClient = pC;
   st.cells[i].dumping = false;
-  cellDumpSecs[i] = 0;
+  cells[i].cellDumpSecs = 0;
 }
 void InitCells() {
-  for (int i=0;i<cellBLE.numCells;i++) {
+  for (int i=0;i<cellBLE.numCells;i++)
     InitCell(i);
-    ConnectCell(i);
-  }
 }
 
 void ConnectCells() {
-  for (int i=0;i<cellBLE.numCells;i++)
+  for (int i=0;i<cellBLE.numCells;i++) {
+    xSemaphoreTake( xMut, portMAX_DELAY );
     ConnectCell(i);
+    xSemaphoreGive( xMut );
+  }
 }
 
 void checkMissingCell() {
@@ -648,8 +662,8 @@ void DoSetting(uint8_t cmd,uint16_t val) {
       if (dynSets.nCells < cellBLE.numCells) {
         for (int i=dynSets.nCells;i<cellBLE.numCells;i++) {
           Serial.printf("Deleting %d\n",i);
-          NimBLEDevice::deleteClient(pClients[i]);
-          pClients[i] = NULL;
+          NimBLEDevice::deleteClient(cells[i].pClient);
+          cells[i].pClient = NULL;
           cellBLE.addrs[i] = emptyAddress;
         }
         cellBLE.numCells = dynSets.nCells;
@@ -676,15 +690,15 @@ void DoSetting(uint8_t cmd,uint16_t val) {
 
 void DoDump(DumpMsg *dm) {
   Serial.println("Doing dump\n");
-    if (cellDumpSecs[dm->cell])
-      cellDumpSecs[dm->cell] = 0;
-    else cellDumpSecs[dm->cell] = dm->secs;
-    BLERemoteService* pServ = pClients[dm->cell]->getService(NimBLEUUID((uint16_t)0x180F));
+    if (cells[dm->cell].cellDumpSecs)
+      cells[dm->cell].cellDumpSecs = 0;
+    else cells[dm->cell].cellDumpSecs = dm->secs;
+    BLERemoteService* pServ = cells[dm->cell].pClient->getService(NimBLEUUID((uint16_t)0x180F));
     if (pServ) {
       NimBLERemoteCharacteristic* pChar = pServ->getCharacteristic(NimBLEUUID((uint16_t)0X2AE2));
       if (pChar) {
-        pChar->writeValue<uint32_t>(cellDumpSecs[dm->cell]);
-        Serial.printf("Write %d %d\n",dm->cell,cellDumpSecs[dm->cell]);
+        pChar->writeValue<uint32_t>(cells[dm->cell].cellDumpSecs);
+        Serial.printf("Write %d %d\n",dm->cell,cells[dm->cell].cellDumpSecs);
       }
     }
 }
@@ -692,19 +706,33 @@ void DoDump(DumpMsg *dm) {
 void JTPrint(const std::string &ad) {
   Serial.printf("FFF: %s %d\n",ad.c_str(),ad.length());
 }
+void DoMove(SettingMsg *mp) {
+  if (!mp->val)
+    return;
+  xSemaphoreTake( xMut, portMAX_DELAY );
+  Cell x = cells[mp->val];
+  NimBLEAddress a = cellBLE.addrs[mp->val];
+  cells[mp->val] = cells[mp->val-1];
+  cells[mp->val].pCB->cell = mp->val;
+  cellBLE.addrs[mp->val] = cellBLE.addrs[mp->val-1];
+  cells[mp->val-1] = x;
+  cells[mp->val-1].pCB->cell = mp->val-1;
+  cellBLE.addrs[mp->val-1] = a;
+  writeCellSet = true;
+  xSemaphoreGive( xMut );
+}
+
 void DoForget(SettingMsg *mp) {
   if (mp->val >= MAX_CELLS)
     return;
   missingCell = true;
-  if (!pClients[mp->val]) return;
-  if (cellBLE.addrs[mp->val] == emptyAddress) {
-    Serial.printf("%d empty: %s\n",mp->val,cellBLE.addrs[mp->val].toString().c_str());
+  Serial.printf("forgetting: %d %s\n",mp->val,cellBLE.addrs[mp->val].toString().c_str());
+  if (cellBLE.addrs[mp->val] == emptyAddress)
     return;
-  }
-  NimBLEDevice::deleteClient(pClients[mp->val]);
-  Serial.printf("Forgetting: %s\n",cellBLE.addrs[mp->val].toString().c_str());
-  pClients[mp->val] = NULL;
   cellBLE.addrs[mp->val] = emptyAddress;
+  if (!cells[mp->val].pClient) return;
+  NimBLEDevice::deleteClient(cells[mp->val].pClient);
+  cells[mp->val].pClient = NULL;
   st.cells[mp->val].volts = 0;
   st.cells[mp->val].conn = 0;
   writeCellSet = true;
@@ -721,6 +749,7 @@ void ConSerData(const AMsg *mp)
         writeDynSets = true;
       }
       break;
+    case MoveCell: DoMove((SettingMsg*)mp); break;
     case ForgetCell: DoForget((SettingMsg*)mp); break;
     case DumpCell: DoDump((DumpMsg*)mp); break;
     case FullChg: st.doFullChg = !st.doFullChg; break;
@@ -728,6 +757,14 @@ void ConSerData(const AMsg *mp)
     case StatQuery: BMSSend(&statSets); break;
     case DynQuery: BMSSend(&dynSets); break;
     case StatSets: statSets = *(StatSetts*)mp; writeStatSets=true; break;
+  }
+}
+
+void BLETask(void *arg) {
+  for (;;) {
+    ConnectCells();
+    CheckBLEScan();
+    delay(CHECKCONNECT);
   }
 }
 
@@ -741,7 +778,7 @@ void setup() {
   digitalWrite(GREEN_LED,1);
   BMSInitCom(EEPROMSize,ConSerData);
   Wire.begin();
-  for (int i=0;i<MAX_CELLS;i++) pClients[i] = NULL;
+  for (int i=0;i<MAX_CELLS;i++) cells[i].pClient = NULL;
 
   NimBLEDevice::init("");
   emptyAddress = NimBLEAddress("00:00:00:00:00:00");
@@ -780,6 +817,8 @@ void setup() {
   BMSSend(&statSets); 
   BMSSend(&dynSets); 
   digitalWrite(GREEN_LED,0);
+  xMut = xSemaphoreCreateMutex();
+  xTaskCreate(BLETask, "BLE task", 4096, NULL, 10, NULL); // priority value?
 }
 
 time_t saveTimeDiff = 0;
@@ -830,10 +869,5 @@ void loop() {
     statusMS = millis();
   }
 
-  if ((millis() - connectMS) > CHECKCONNECT) {
-    ConnectCells();
-    connectMS = millis();
-  }
   BMSGetSerial();
-  CheckBLEScan();
 }
