@@ -85,8 +85,8 @@ struct BMSStatus {
   uint8_t stateOfCharge,watchDogHits;
   int8_t curTemp1,milliRolls;
   uint16_t lastPackMilliVolts,maxDiffMilliVolts;
-  uint32_t lastPVMicroAmps,BatAHMeasured,lastMillis;
-  int32_t lastMicroAmps,lastAdjMillAmpHrs;
+  uint32_t BatAHMeasured,lastMillis;
+  int32_t lastPVMicroAmps,lastMicroAmps,lastAdjMillAmpHrs;
   int64_t aveAdjMilliAmpMillis;
   Cells cells[MAX_CELLS];
   uint8_t previousRelayState[C_RELAY_TOTAL];
