@@ -373,6 +373,7 @@ void checkStatus()
   bool allovertemprec = true,allundertemprec = true;
   //Loop through cells
   cellsOverDue = false;
+  uint16_t totalVolts=0;
   for (int8_t i = 0; i < dynSets.nCells; i++)
   {
     if (!st.cells[i].conn && doShutOffNoStatus(lastSentMillis)) {
@@ -383,6 +384,7 @@ void checkStatus()
       break;
     }
     uint16_t cellV = st.cells[i].volts;
+    totalVolts += cellV;
 
     if (cellV > statSets.limits[LimitConsts::Volt][LimitConsts::Cell][LimitConsts::Max][LimitConsts::Trip]) {
       if (!st.maxCellVState) {
@@ -426,6 +428,9 @@ void checkStatus()
         allundertemprec = false;
     }
   }
+  uint16_t diffVolts = totalVolts > st.lastPackMilliVolts? totalVolts - st.lastPackMilliVolts: st.lastPackMilliVolts - totalVolts;
+  if (diffVolts > st.maxDiffMilliVolts)
+    st.maxDiffMilliVolts = diffVolts;
   if (st.maxCellVState && allovervoltrec)
     st.maxCellVState = false;
   if (st.minCellVState && allundervoltrec)
