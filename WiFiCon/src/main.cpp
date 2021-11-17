@@ -53,9 +53,11 @@ void trimLastEventMsg() {
   lastEventMsgCnt++;
   if (lastEventMsgCnt > LAST_EVT_MSG_CNT) {
     char* ptr = strchr(lastEventMsg,'|');
-    if (ptr)
+    if (!ptr) ptr = strchr(lastEventMsg,',');
+    if (ptr) {
       snprintf(lastEventMsg,sizeof(lastEventMsg),"%s",ptr+2);
-    lastEventMsgCnt = LAST_EVT_MSG_CNT;
+      lastEventMsgCnt = LAST_EVT_MSG_CNT;
+    }
   }
 }
 

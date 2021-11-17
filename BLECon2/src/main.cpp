@@ -376,7 +376,7 @@ void checkStatus()
   uint16_t totalVolts=0;
   for (int8_t i = 0; i < dynSets.nCells; i++)
   {
-    if ((!st.cells[i].conn || (millis() - cells[i].cellLast) > (2*dynSets.cellSets.time)) && doShutOffNoStatus(lastSentMillis)) {
+    if ((!st.cells[i].conn || (millis() - cells[i].cellLast) > (8*dynSets.cellSets.time)) && doShutOffNoStatus(lastSentMillis)) {
       clearRelays();
       if (!cellsOverDue)
         SendEvent(!st.cells[i].conn?CellsDisc:CellsOverDue,st.lastMicroAmps,0,i);
@@ -605,7 +605,7 @@ void initdynSets() {
   dynSets.cellSets.cnt = 4;
   dynSets.cellSets.delay = 0;
   dynSets.cellSets.resPwrOn = false;
-  dynSets.cellSets.time = 2000;
+  dynSets.cellSets.time = 1000; // this will be like 2 secs, because cell goes to sleep and slows CPU by 2x
   dynSets.TopAmps = 6;
 }
 void initstatSets() {
