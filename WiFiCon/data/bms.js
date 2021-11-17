@@ -224,7 +224,7 @@ function initCells() {
         temp.show();
 
         temp = $("#cellDel").clone();
-        temp.find("span").text('#'+rel+":").css("background-color", colors[rel]);
+        temp.find("span[cell]").text('#'+rel).css("background-color", colors[rel]);
         temp.attr({id: "cellDel"+rel});
         temp.attr({celldel: true});
         var theA = temp.find("a[forget]");
@@ -475,6 +475,7 @@ function queryBMS() {
                 if (value.t > -101)
                     $("#cellTV"+value.c+" .t").html(value.t);
                 else $("#cellTV"+value.c+" .t").html("");
+                $("#cellDel"+value.c+" .t").html(value.bt);
                 cell.text(formatNum(valV,2));
             } else cell.text('');
             var inp = $("#cellMove"+value.c);

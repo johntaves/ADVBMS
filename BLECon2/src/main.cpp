@@ -22,7 +22,6 @@ int8_t analCnt=0,curAnal=0;
 bool cellsOverDue = true,loadsOff = true,chgOff = true
   ,updateINAs=false,writeStatSets=false,writeDynSets=false,writeCellSet=false,missingCell;
 uint32_t lastSentMillis=0,statusCnt=0,lastHitCnt=0,scanStart=0;
-uint16_t resPwrMS=0;
 Ticker watchDog;
 bool OTAInProg = false;
 
@@ -321,6 +320,7 @@ class adCB: public NimBLEAdvertisedDeviceCallbacks {
 void checkStatus()
 {
   statusCnt++;
+  statusMS = millis();
 
   digitalWrite(RESISTOR_PWR,HIGH);
   if (dynSets.cellSets.delay)
@@ -376,10 +376,10 @@ void checkStatus()
   uint16_t totalVolts=0;
   for (int8_t i = 0; i < dynSets.nCells; i++)
   {
-    if (!st.cells[i].conn && doShutOffNoStatus(lastSentMillis)) {
+    if ((!st.cells[i].conn || (millis() - cells[i].cellLast) > (2*dynSets.cellSets.time)) && doShutOffNoStatus(lastSentMillis)) {
       clearRelays();
       if (!cellsOverDue)
-        SendEvent(CellsOverDue);
+        SendEvent(!st.cells[i].conn?CellsDisc:CellsOverDue,st.lastMicroAmps,0,i);
       cellsOverDue = true;
       break;
     }
@@ -869,10 +869,8 @@ void loop() {
     }
   }
 
-  if ((millis() - statusMS) > CHECKSTATUS) {
+  if ((millis() - statusMS) > CHECKSTATUS)
     checkStatus();
-    statusMS = millis();
-  }
 
   BMSGetSerial();
 }

@@ -22,7 +22,7 @@
 char debugstr[200],lastEventMsg[1024];
 int8_t lastEventMsgCnt=0;
 bool emailSetup=false,writeCommSet=false,writeWifiSet=false,writeDispSet=false,writeRelaySet=false;
-uint16_t resPwrMS=0;
+uint16_t statusMS=0;
 HTTPClient http;
 atomic_flag taskRunning(0);
 bool OTAInProg = false;
@@ -715,6 +715,7 @@ void sendStatus() {
 
 void checkStatus()
 {
+  statusMS = millis();
   uint8_t relay[W_RELAY_TOTAL];
   for (int8_t n = 0; n < W_RELAY_TOTAL; n++)
   {
@@ -726,13 +727,30 @@ void checkStatus()
   }
 }
 
+void MsgEvent(EventMsg *mp) {
+  trimLastEventMsg();
+  if (mp->cmd >= CellTopV && mp->cmd <= CellBotV)
+    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s #%d %dV,",lastEventMsg,mp->cell,mp->amps);
+  else if (mp->cmd >= CellTopT && mp->cmd <= CellBotT)
+    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s #%d %dT,",lastEventMsg,mp->cell,mp->amps);
+  else if (mp->cmd >= PackTopV && mp->cmd <= PackBotV)
+    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s %dV,",lastEventMsg,mp->amps);
+  else if (mp->cmd >= PackTopV && mp->cmd <= PackBotV)
+    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s %dT,",lastEventMsg,mp->amps);
+  else if (mp->cmd == CellsOverDue)
+    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s #%d %dX,",lastEventMsg,mp->cell,mp->amps);
+  else if (mp->cmd == CellsDisc)
+    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s #%d %dD,",lastEventMsg,mp->cell,mp->amps);
+}
 void WonSerData(const AMsg *mp)
 {
-  switch(mp->cmd) {
+  if (mp->cmd > FirstEvent && mp->cmd < LastEvent)
+    MsgEvent((EventMsg*)mp);
+  else switch(mp->cmd) {
     case DiscCell:
     case ConnCell: 
       trimLastEventMsg();
-      snprintf(lastEventMsg,sizeof(lastEventMsg),"%s %s %d | ",lastEventMsg,mp->cmd == DiscCell?"D":"C"
+      snprintf(lastEventMsg,sizeof(lastEventMsg),"%s %s%d,",lastEventMsg,mp->cmd == DiscCell?"D":"C"
           ,((SettingMsg*)mp)->val);
       break;
     case StatSets: statSets = *(StatSetts*)mp; break;
@@ -830,5 +848,8 @@ void loop() {
       Serial.println("Error sending Email, " + MailClient.smtpErrorReason());
     sendEmail = false;
   }
+  if ((millis() - statusMS) > CHECKSTATUS)
+    checkStatus();
+
   ArduinoOTA.handle(); // this does nothing until it is initialized
 }

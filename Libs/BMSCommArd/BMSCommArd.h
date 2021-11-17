@@ -13,7 +13,7 @@ enum Msg {
 
   FirstEvent,
   WatchDog,
-  CellsOverDue,
+  CellsOverDue,CellsDisc,
   CellTopV,
   CellBotV,
   CellTopT,
@@ -70,6 +70,7 @@ struct StrMsg {
 #define W_RELAY_TOTAL 6
 #define RELAY_TOTAL (C_RELAY_TOTAL + W_RELAY_TOTAL)
 #define MAX_CELLS 8
+#define CHECKSTATUS 2000
 
 enum {
   Relay_Connect,Relay_Load,Relay_Charge

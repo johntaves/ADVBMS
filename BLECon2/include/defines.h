@@ -15,7 +15,6 @@
 #define WATCHDOGSLOP 2000
 // attempt to connect to cells
 #define CHECKCONNECT 1000
-#define CHECKSTATUS 2000
 
 struct BLESettings {
   int numCells;
