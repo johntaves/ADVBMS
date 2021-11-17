@@ -704,9 +704,7 @@ void DoSetting(uint8_t cmd,uint16_t val) {
 
 void DoDump(DumpMsg *dm) {
   Serial.println("Doing dump\n");
-    if (cells[dm->cell].cellDumpSecs)
-      cells[dm->cell].cellDumpSecs = 0;
-    else cells[dm->cell].cellDumpSecs = dm->secs;
+    cells[dm->cell].cellDumpSecs = dm->secs;
     BLERemoteService* pServ = cells[dm->cell].pClient->getService(NimBLEUUID((uint16_t)0x180F));
     if (pServ) {
       NimBLERemoteCharacteristic* pChar = pServ->getCharacteristic(NimBLEUUID((uint16_t)0X2AE2));

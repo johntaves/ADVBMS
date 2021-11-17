@@ -207,10 +207,13 @@ function initCells() {
         theA.attr("cell",rel);
         theA.click(function () {
             var r = $(this).attr("cell");
+            var min = 0;
+            if (!$("#cellTV"+value.c+" .v").hasClass("dumping"))
+               min = (Number($('#DurH').val()) * 60) + Number($('#DurM').val());
             $.ajax({
                 type: "POST",
                 url: "/dump",
-                data: { cell: r, hrs: $('#DurH').val(), min: $('#DurM').val() },
+                data: { cell: r, min: min},
                 dataType:'json',
                 success: function (data) {
                     $("#savesuccess").show().delay(2000).fadeOut(500);

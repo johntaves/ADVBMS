@@ -336,12 +336,10 @@ void fullChg(AsyncWebServerRequest *request) {
 
 void dump(AsyncWebServerRequest *request) {
   if (request->hasParam("cell", true)) {
-    uint32_t h = request->getParam("hrs", true)->value().toInt();
-    uint32_t m = request->getParam("min", true)->value().toInt();
     DumpMsg dm;
     dm.cmd = DumpCell;
     dm.cell = request->getParam("cell", true)->value().toInt();
-    dm.secs = ((h*60)+m) * 60;
+    dm.secs = request->getParam("min", true)->value().toInt();
     BMSSend(&dm);
     AsyncResponseStream *response = request->beginResponseStream("application/json");
     DynamicJsonDocument doc(100);
