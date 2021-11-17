@@ -21,7 +21,7 @@
 int8_t analCnt=0,curAnal=0;
 bool cellsOverDue = true,loadsOff = true,chgOff = true
   ,updateINAs=false,writeStatSets=false,writeDynSets=false,writeCellSet=false,missingCell;
-uint32_t lastSentMillis=0,statusCnt=0,lastHitCnt=0,scanStart=0;
+uint32_t statusCnt=0,lastHitCnt=0,scanStart=0;
 Ticker watchDog;
 bool OTAInProg = false;
 
@@ -376,7 +376,7 @@ void checkStatus()
   uint16_t totalVolts=0;
   for (int8_t i = 0; i < dynSets.nCells; i++)
   {
-    if ((!st.cells[i].conn || (millis() - cells[i].cellLast) > (8*dynSets.cellSets.time)) && doShutOffNoStatus(lastSentMillis)) {
+    if ((!st.cells[i].conn || (millis() - cells[i].cellLast) > (5*dynSets.cellSets.time)) && doShutOffNoStatus(cells[i].cellLast)) {
       clearRelays();
       if (!cellsOverDue)
         SendEvent(!st.cells[i].conn?CellsDisc:CellsOverDue,st.lastMicroAmps,0,i);
