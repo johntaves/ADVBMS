@@ -376,13 +376,22 @@ void checkStatus()
   uint16_t totalVolts=0;
   for (int8_t i = 0; i < dynSets.nCells; i++)
   {
-    if ((!st.cells[i].conn || (millis() - cells[i].cellLast) > (5*dynSets.cellSets.time)) && doShutOffNoStatus(cells[i].cellLast)) {
+    if (!st.cells[i].conn && doShutOffNoStatus(cells[i].cellLast)) {
       clearRelays();
       if (!cellsOverDue)
-        SendEvent(!st.cells[i].conn?CellsDisc:CellsOverDue,st.lastMicroAmps,0,i);
+        SendEvent(CellsDisc,st.lastMicroAmps,0,i);
       cellsOverDue = true;
       break;
     }
+    if ((millis() - cells[i].cellLast) > (5*dynSets.cellSets.time)) {
+      char buf[256];
+      buf[0] = 0;
+      uint32_t ct = millis();
+      for (int j=0;j<dynSets.nCells;j++)
+        snprintf(buf,sizeof(buf),"%s #%d %u\n",buf,j,ct - cells[j].cellLast);
+      BMSSend(buf);
+    }
+      
     uint16_t cellV = st.cells[i].volts;
     totalVolts += cellV;
 
