@@ -208,7 +208,7 @@ function initCells() {
         theA.click(function () {
             var r = $(this).attr("cell");
             var min = 0;
-            if (!$("#cellTV"+value.c+" .v").hasClass("dumping"))
+            if (!$("#cellTV"+r+" .v").hasClass("dumping"))
                min = (Number($('#DurH').val()) * 60) + Number($('#DurM').val());
             $.ajax({
                 type: "POST",
@@ -293,8 +293,11 @@ function getSettings(s) {
                 $("input[name='ssid']").val(data.ssid);
             } else if (s == "cells") {
             } else if (s == "batt") {
-                $("#Avg").val(data.Avg);
-                $("#ConvTime").val(data.ConvTime);
+                $("input[name='PollFreq']").val(data.PollFreq);
+                $("input[name='Avg']").val(data.Avg);
+                $("input[name='ConvTime']").val(data.ConvTime);
+                $("input[name='PVAvg']").val(data.PVAvg);
+                $("input[name='PVConvTime']").val(data.PVConvTime);
                 $("#BattAH").val(data.BattAH);
                 $("#socLastAdj").html(data.socLastAdj);
                 $("#socAvgAdj").html(data.socAvgAdj);
@@ -306,7 +309,6 @@ function getSettings(s) {
                 $("#nCells").val(data.nCells);
                 $("#CurSOC").val('');
                 $("#TopAmps").val(data.TopAmps);
-                $("#PollFreq").val(data.PollFreq);
                 $("input[name='cellCnt']").val(data.cellCnt);
                 $("input[name='cellDelay']").val(data.cellDelay);
                 $("input[name='resPwrOn']").prop("checked", data.resPwrOn);

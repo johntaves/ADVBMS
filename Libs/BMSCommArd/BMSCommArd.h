@@ -25,7 +25,7 @@ enum Msg {
 
   FirstStr,Panic,DebugStr,LastStr,
 
-  FirstSetting,SetCurSOC,SetPollFreq,SetAvg,SetConvTime,SetBattAH,
+  FirstSetting,SetCurSOC,SetPollFreq,SetAvg,SetConvTime,SetPVAvg,SetPVConvTime,SetBattAH,
   SetMaxAmps,SetShuntUOhms,SetPVMaxAmps,SetPVShuntUOhms,SetNCells,
   SetRelayOff,SetTopAmps,
   LastSetting,
@@ -123,7 +123,7 @@ struct StatSetts {
 
 struct DynSetts {
   uint8_t crc,cmd;
-  uint16_t BattAH,MaxAmps,PVMaxAmps,Avg,ConvTime,TopAmps;
+  uint16_t BattAH,MaxAmps,PVMaxAmps,Avg,ConvTime,PVAvg,PVConvTime,TopAmps;
   uint32_t ShuntUOhms,PVShuntUOhms,PollFreq;
   uint8_t nCells;
   uint64_t milliAmpMillis;

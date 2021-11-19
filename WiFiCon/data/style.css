@@ -86,6 +86,9 @@ input[type=number] {
     width: 50em;
 }
 
+.shuntSet {
+    display: inline-block;
+}
 label {
     display: inline-block;
     text-align: right;

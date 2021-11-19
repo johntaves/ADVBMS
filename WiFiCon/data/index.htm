@@ -115,15 +115,31 @@
                     </div>
                     <div>
                         <label for="PollFreq">Poll Time (ms):</label>
-                        <input type="number" name="PollFreq" id="PollFreq" value="500" maxlength="10" />
+                        <input type="number" name="PollFreq" value="500" maxlength="10" />
                     </div>
                     <div>
-                        <label for="Avg">Averages:</label>
-                        <input type="number" name="Avg" id="Avg" value="" required="" maxlength="4" />
-                    </div>
-                    <div>
-                        <label for="ConvTime">Conversion Time:</label>
-                        <input type="number" name="ConvTime" id="ConvTime" value="" required="" maxlength="4" />
+                        <div class="shuntSet">
+                            <div>Main</div>
+                            <div>
+                                <label for="Avg">Averages:</label>
+                                <input type="number" name="Avg" value="" required="" maxlength="4" />
+                            </div>
+                            <div>
+                                <label for="ConvTime">Conversion Time:</label>
+                                <input type="number" name="ConvTime" value="" required="" maxlength="4" />
+                            </div>
+                        </div>
+                        <div class="shuntSet">
+                            <div>PV</div>
+                            <div>
+                                <label for="PVAvg">Averages:</label>
+                                <input type="number" name="PVAvg" value="" required="" maxlength="4" />
+                            </div>
+                            <div>
+                                <label for="PVConvTime">Conversion Time:</label>
+                                <input type="number" name="PVConvTime" value="" required="" maxlength="4" />
+                            </div>
+                        </div>
                     </div>
                     <div><label for="socLastAdj">Last SoC Adj (mAh):</label>&nbsp;<span id="socLastAdj"></span></div>
                     <div><label for="socAvgAdj">Ave SoC Adj (mAh:n):</label>&nbsp;<span id="socAvgAdj"></span></div>
@@ -165,14 +181,14 @@
                     <div class="h"><span cell></span>&nbsp;<a move>&lt</a>&nbsp;<a forget>Disc</a></div>bT:&nbsp;<span class="t">Temp</span></div></div>
             <form method="POST" action="savecellset" autocomplete="off">
                 <div><label for="cellCnt"># Samples:</label>
-                    <input name="cellCnt" type="text"/></div>
+                    <input name="cellCnt" type="number"/></div>
                     <div><label for="cellDelay">Pwr Delay:</label>
-                        <input name="cellDelay" type="text"/></div>
+                        <input name="cellDelay" type="number"/></div>
                     <div><label for="resPwrOn">Leave Pwr On:</label>
                         <input name="resPwrOn" type="checkbox"/></div>
                     <div>
                     <label for="cellTime">Sample Time:</label>
-                    <input name="cellTime" type="text"/>
+                    <input name="cellTime" type="number"/>
                 </div>
                 <div class="buttonhold"><input type="submit" value="Save settings" /></div>
             </form>

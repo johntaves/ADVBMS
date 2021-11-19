@@ -325,10 +325,10 @@ void checkStatus()
   digitalWrite(RESISTOR_PWR,HIGH);
   if (dynSets.cellSets.delay)
     delay(dynSets.cellSets.delay);
-  st.curTemp1 = BMSReadTemp(TEMP1,statSets.bdVolts,BCOEF,47000,47000,dynSets.cellSets.cnt);
+  uint16_t vp;
+  st.curTemp1 = BMSReadTemp(TEMP1,statSets.bdVolts,BCOEF,47000,47000,dynSets.cellSets.cnt,&vp);
   if (!dynSets.cellSets.resPwrOn)
     digitalWrite(RESISTOR_PWR,LOW);
-
   if (INADevs > 0) {
     if ((st.lastMicroAmps > 0 && chgOff) || (st.lastMicroAmps < 0 && loadsOff)) {
       if (!inAlertState) {
@@ -575,12 +575,12 @@ void checkStatus()
 void setINAs() {
   INA.begin(dynSets.MaxAmps, dynSets.ShuntUOhms,0);
   INA.begin(dynSets.PVMaxAmps,dynSets.PVShuntUOhms,1);
-  INA.setShuntConversion(300,0);
-  INA.setBusConversion(300,0);
-  INA.setAveraging(10000,0);
-  INA.setShuntConversion(dynSets.ConvTime,1);
-  INA.setBusConversion(dynSets.ConvTime,1);
-  INA.setAveraging(dynSets.Avg,1);
+  INA.setShuntConversion(dynSets.ConvTime,0);
+  INA.setBusConversion(dynSets.ConvTime,0);
+  INA.setAveraging(dynSets.Avg,0);
+  INA.setShuntConversion(dynSets.PVConvTime,1);
+  INA.setBusConversion(dynSets.PVConvTime,1);
+  INA.setAveraging(dynSets.PVAvg,1);
 }
 
 void setStateOfCharge(int64_t val,bool valid) {
@@ -609,6 +609,8 @@ void initdynSets() {
   dynSets.BattAH = 1;
   dynSets.ConvTime = 1000;
   dynSets.Avg = 1000;
+  dynSets.PVConvTime = 1000;
+  dynSets.PVAvg = 1000;
   dynSets.savedTime = 0;
   dynSets.milliAmpMillis = 0;
   dynSets.cellSets.cnt = 4;
@@ -698,6 +700,8 @@ void DoSetting(uint8_t cmd,uint16_t val) {
     case SetPVShuntUOhms: dynSets.PVShuntUOhms = val; updateINAs = true; break;
     case SetAvg: dynSets.Avg = val; updateINAs = true; break;
     case SetConvTime: dynSets.ConvTime = val; updateINAs = true; break;
+    case SetPVAvg: dynSets.PVAvg = val; updateINAs = true; break;
+    case SetPVConvTime: dynSets.PVConvTime = val; updateINAs = true; break;
   }
   writeDynSets = true;
 }
@@ -783,7 +787,7 @@ void BLETask(void *arg) {
 void setup() {
   Serial.begin(9600);
   BMSADCInit();
-  adc1_config_channel_atten(ADC1_CHANNEL_7, ADC_ATTEN_DB_11);
+  adc1_config_channel_atten(TEMP1, ADC_ATTEN_DB_11);
 
   pinMode(GREEN_LED, OUTPUT);
   pinMode(RESISTOR_PWR, OUTPUT);

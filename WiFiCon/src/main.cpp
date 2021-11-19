@@ -268,9 +268,11 @@ void batt(AsyncWebServerRequest *request){
   JsonObject root = doc.to<JsonObject>();
   root["notRecd"] = notRecd;
 
-  root["Avg"] = dynSets.Avg;
   root["PollFreq"] = dynSets.PollFreq;
+  root["Avg"] = dynSets.Avg;
   root["ConvTime"] = dynSets.ConvTime;
+  root["PVAvg"] = dynSets.PVAvg;
+  root["PVConvTime"] = dynSets.PVConvTime;
   root["BattAH"] = dynSets.BattAH;
   root["TopAmps"] = dynSets.TopAmps;
 
@@ -339,7 +341,7 @@ void dump(AsyncWebServerRequest *request) {
     DumpMsg dm;
     dm.cmd = DumpCell;
     dm.cell = request->getParam("cell", true)->value().toInt();
-    dm.secs = request->getParam("min", true)->value().toInt();
+    dm.secs = request->getParam("min", true)->value().toInt() * 60;
     BMSSend(&dm);
     AsyncResponseStream *response = request->beginResponseStream("application/json");
     DynamicJsonDocument doc(100);
@@ -636,7 +638,9 @@ void savecapacity(AsyncWebServerRequest *request) {
   saveItem(request,"CurSOC",SetCurSOC,101);
   saveItem(request,"PollFreq",SetPollFreq,dynSets.PollFreq);
   saveItem(request,"Avg",SetAvg,dynSets.Avg);
-  saveItem(request,"ConvTime", SetConvTime,dynSets.ConvTime);
+  saveItem(request,"ConvTime", SetPVConvTime,dynSets.PVConvTime);
+  saveItem(request,"PVAvg",SetPVAvg,dynSets.PVAvg);
+  saveItem(request,"PVConvTime", SetConvTime,dynSets.ConvTime);
   saveItem(request,"BattAH",SetBattAH,dynSets.BattAH);
   saveItem(request,"TopAmps",SetTopAmps,dynSets.TopAmps);
   saveItem(request,"MaxAmps",SetMaxAmps,dynSets.MaxAmps);
@@ -713,10 +717,51 @@ void sendStatus() {
   taskRunning.clear();
 }
 
+bool isFromOff(RelaySettings* rs) {
+  if (!strlen(rs->from))
+    return false;
+  for (int8_t y = 0; y < C_RELAY_TOTAL; y++)
+  {
+    RelaySettings *rp = &statSets.relays[y];
+    if (rp == rs) continue;
+    if (!strcmp(rp->name,rs->from))
+      return st.previousRelayState[y] == LOW;
+  }
+  return false;
+}
+
 void checkStatus()
 {
   statusMS = millis();
   uint8_t relay[W_RELAY_TOTAL];
+  for (int8_t y = 0; y < W_RELAY_TOTAL; y++)
+  {
+    RelaySettings *rp = &relSets.relays[y];
+    if (rp->off)
+      relay[y] = LOW;
+    else {
+      relay[y] = st.previousRelayState[y]; // don't change it because we might be in the SOC trip/rec area
+      switch (rp->type) {
+        default: case Relay_Connect: relay[y] = LOW; break; // don't put this on this CPU
+        case Relay_Load:
+          if (isFromOff(rp))
+            relay[y] = HIGH;
+          else if (rp->doSoC && (!st.stateOfChargeValid || st.stateOfCharge < rp->trip))
+            relay[y] = LOW; // turn if off
+          else if (!rp->doSoC || (rp->doSoC && st.stateOfChargeValid && st.stateOfCharge > rp->rec))
+            relay[y] = HIGH; // turn it on
+          // else leave it as-is
+          break;
+        case Relay_Charge:
+          if (rp->doSoC && (!st.stateOfChargeValid || st.stateOfCharge > rp->trip))
+            relay[y] = LOW; // off
+          else if (!rp->doSoC || (rp->doSoC && st.stateOfChargeValid && st.stateOfCharge < rp->rec))
+            relay[y] = HIGH; // on
+          // else leave it as-is
+          break;
+      }
+    }
+  }
   for (int8_t n = 0; n < W_RELAY_TOTAL; n++)
   {
     if (previousRelayState[n] != relay[n])
@@ -819,6 +864,12 @@ void setup() {
   smtpData.setSendCallback(emailCallback);
   startServer();
   configTime(0,0,"pool.ntp.org");
+  AMsg msg;
+  msg.cmd = StatQuery;
+  BMSWaitFor(&msg,StatSets);
+  msg.cmd = DynQuery;
+  BMSWaitFor(&msg,DynSets);
+
   digitalWrite(GREEN_LED,0);
 }
 
