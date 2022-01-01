@@ -104,7 +104,7 @@ void readData() {
   }
   pStat->setValue<CellStatus>(cs);
   pStat->notify();
-  printf("V: %d, Tb: %d, Tx: %d, D: %d, Ms: %d\n",cs.volts,cs.tempBd,cs.tempExt,cs.draining, millis());
+//  printf("V: %d, Tb: %d, Tx: %d, D: %d, Ms: %d\n",cs.volts,cs.tempBd,cs.tempExt,cs.draining, millis());
   gpio_set_level(GLED,LOW);
 }
 

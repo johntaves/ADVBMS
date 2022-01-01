@@ -176,12 +176,10 @@ void InitOTA() {
       else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
       else if (error == OTA_END_ERROR) Serial.println("End Failed");
     });
-
   ArduinoOTA.begin();
 }
 void getAmps() {
   lastMicroAmps = -INA.getBusMicroAmps(0);
-
   uint32_t thisMillis = millis();
   int64_t deltaMilliAmpMillis = (int64_t)lastMicroAmps * (thisMillis - lastShuntMillis) / 1000;
   milliAmpMillis += deltaMilliAmpMillis;
