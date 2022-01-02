@@ -101,7 +101,6 @@ void InitOTA() {
     });
 
   ArduinoOTA.begin();
-  Serial.println("Here");
 }
 
 void clearRelays() {
@@ -211,7 +210,7 @@ void limits(AsyncWebServerRequest *request){
   JsonObject root = doc.to<JsonObject>();
   root["notRecd"] = notRecd;
   root["useCellC"]=statSets.useCellC;
-  root["useTemp1"]=statSets.useTemp1;
+  root["useBoardTemp"]=statSets.useBoardTemp;
   root["bdVolts"]=statSets.bdVolts;
   root["ChargePct"]=statSets.ChargePct;
   root["ChargePctRec"]=statSets.ChargePctRec;
@@ -235,6 +234,19 @@ void limits(AsyncWebServerRequest *request){
     }
   }
 
+  serializeJson(doc, *response);
+  request->send(response);
+}
+
+void relays(AsyncWebServerRequest *request){  
+  AMsg msg;
+  msg.cmd = StatQuery;
+  bool notRecd = BMSWaitFor(&msg,StatSets);
+  AsyncResponseStream *response =
+      request->beginResponseStream("application/json");
+  DynamicJsonDocument doc(8192);
+  JsonObject root = doc.to<JsonObject>();
+  root["notRecd"] = notRecd;
   JsonArray rsArray = root.createNestedArray("relaySettings");
   for (uint8_t r = 0; r < RELAY_TOTAL; r++) {
     JsonObject rule1 = rsArray.createNestedObject();
@@ -247,11 +259,12 @@ void limits(AsyncWebServerRequest *request){
       default: case Relay_Connect: rule1["type"] = "E"; break;
       case Relay_Load: rule1["type"] = (rp->doSoC?"LP":"L"); break;
       case Relay_Charge: rule1["type"] = (rp->doSoC?"CP":(rp->fullChg?"CF":"C")); break;
+      case Relay_Therm: rule1["type"] = "T";break;
     }
     
     rule1["trip"] =rp->trip;
     rule1["rec"] =rp->rec;
-    rule1["rank"] =rp->rank;
+    rule1["therm"] =rp->therm;
   }
 
   serializeJson(doc, *response);
@@ -432,7 +445,7 @@ void fillStatusDoc(JsonVariant root) {
   snprintf(spb,sizeof(spb),"%d%%",st.stateOfCharge);
   root["soc"] = spb;
   root["socvalid"] = st.stateOfChargeValid;
-  root["temp1"] = fromCel(st.curTemp1);
+  root["BoardTemp"] = fromCel(st.curBoardTemp);
   root["fullChg"] = st.doFullChg;
 
   root["maxCellVState"] = st.maxCellVState;
@@ -469,7 +482,7 @@ void status(AsyncWebServerRequest *request){
   request->send(response);
 }
 
-void saverules(AsyncWebServerRequest *request) {
+void savelimits(AsyncWebServerRequest *request) {
   for (int l0=0;l0<LimitConsts::Max0;l0++) {
     for (int l1=0;l1<LimitConsts::Max1;l1++) {
       for (int l2=0;l2<LimitConsts::Max2;l2++) {
@@ -486,40 +499,7 @@ void saverules(AsyncWebServerRequest *request) {
     }
   }
 
-  for (int relay=0;relay<RELAY_TOTAL;relay++) {
-    char name[16],type[3];
-    RelaySettings *rp;
-    if (relay < C_RELAY_TOTAL)
-      rp = &statSets.relays[relay];
-    else rp = &relSets.relays[relay - C_RELAY_TOTAL];
-    sprintf(name,"relayName%d",relay);
-    if (request->hasParam(name, true))
-      request->getParam(name, true)->value().toCharArray(rp->name,sizeof(rp->name));;
-    sprintf(name,"relayFrom%d",relay);
-    if (request->hasParam(name, true))
-      request->getParam(name, true)->value().toCharArray(rp->from,sizeof(rp->from));;
-    
-    sprintf(name,"relayType%d",relay);
-    if (request->hasParam(name, true)) {
-      request->getParam(name, true)->value().toCharArray(type,sizeof(type));
-      switch (type[0]) {
-        default: case 'E':rp->type = Relay_Connect;break;
-        case 'L':rp->type = Relay_Load;break;
-        case 'C':rp->type = Relay_Charge; break;
-      }
-      rp->doSoC = type[1] == 'P';
-      rp->fullChg = type[1] == 'F';
-    }
-
-    sprintf(name,"relayTrip%d",relay);
-    if (request->hasParam(name, true))
-      rp->trip = request->getParam(name, true)->value().toInt();
-
-    sprintf(name,"relayRec%d",relay);
-    if (request->hasParam(name, true))
-      rp->rec = request->getParam(name, true)->value().toInt();
-  }
-  statSets.useTemp1 = request->hasParam("useTemp1", true) && request->getParam("useTemp1", true)->value().equals("on");
+  statSets.useBoardTemp = request->hasParam("useBoardTemp", true) && request->getParam("useBoardTemp", true)->value().equals("on");
   statSets.useCellC = request->hasParam("useCellC", true) && request->getParam("useCellC", true)->value().equals("on");
 
   if (request->hasParam("ChargePct", true))
@@ -543,9 +523,56 @@ void saverules(AsyncWebServerRequest *request) {
     st.maxCellCState = false;
     st.minCellCState = false;
   }
-  if (!statSets.useTemp1) {
+  if (!statSets.useBoardTemp) {
     st.maxPackCState = false;
     st.minPackCState = false;
+  }
+  writeRelaySet = true;
+  BMSSend(&statSets);
+
+  sendSuccess(request);
+}
+
+void saverelays(AsyncWebServerRequest *request) {
+  for (int relay=0;relay<RELAY_TOTAL;relay++) {
+    char name[16],type[3];
+    RelaySettings *rp;
+    if (relay < C_RELAY_TOTAL)
+      rp = &statSets.relays[relay];
+    else rp = &relSets.relays[relay - C_RELAY_TOTAL];
+    sprintf(name,"relayName%d",relay);
+    if (request->hasParam(name, true))
+      request->getParam(name, true)->value().toCharArray(rp->name,sizeof(rp->name));;
+    sprintf(name,"relayFrom%d",relay);
+    if (request->hasParam(name, true))
+      request->getParam(name, true)->value().toCharArray(rp->from,sizeof(rp->from));;
+    
+    sprintf(name,"relayType%d",relay);
+    if (request->hasParam(name, true)) {
+      request->getParam(name, true)->value().toCharArray(type,sizeof(type));
+      switch (type[0]) {
+        default: case 'E':rp->type = Relay_Connect;break;
+        case 'L':rp->type = Relay_Load;break;
+        case 'C':rp->type = Relay_Charge; break;
+        case 'T':rp->type = Relay_Therm; break;
+      }
+      rp->doSoC = type[1] == 'P';
+      rp->fullChg = type[1] == 'F';
+    }
+
+    sprintf(name,"relayTrip%d",relay);
+    if (request->hasParam(name, true))
+      rp->trip = request->getParam(name, true)->value().toInt();
+
+    sprintf(name,"relayRec%d",relay);
+    if (request->hasParam(name, true))
+      rp->rec = request->getParam(name, true)->value().toInt();
+
+    sprintf(name,"relayTherm%d",relay);
+    if (request->hasParam(name, true)) {
+      request->getParam(name, true)->value().toCharArray(type,sizeof(type));
+      rp->therm = type[0];
+    }
   }
   writeRelaySet = true;
   BMSSend(&statSets);
@@ -585,7 +612,7 @@ void WiFiInit() {
   WiFi.persistent(false);
   WiFi.disconnect(true,true);
   if (strlen(wifiSets.apName)) {
-    Serial.println(wifiSets.apName);
+    Serial.printf("%s:%s",wifiSets.apName,wifiSets.apPW);
     WiFi.setHostname(wifiSets.apName);
     WiFi.softAP(wifiSets.apName,wifiSets.apPW,1,1);
   } else WiFi.softAP("ADVBMS_CONTROLLER");
@@ -686,9 +713,11 @@ void startServer() {
   server.on("/savewifi", HTTP_POST, savewifi);
   server.on("/savecapacity", HTTP_POST, savecapacity);
   server.on("/savecellset", HTTP_POST, savecellset);
-  server.on("/saverules", HTTP_POST, saverules);
+  server.on("/savelimits", HTTP_POST, savelimits);
+  server.on("/saverelays", HTTP_POST, saverelays);
   server.on("/cells", HTTP_GET, cells);
   server.on("/limits", HTTP_GET, limits);
+  server.on("/relays", HTTP_GET, relays);
   server.on("/batt", HTTP_GET, batt);
   server.on("/net", HTTP_GET, net);
   server.on("/status", HTTP_GET, status);
@@ -758,6 +787,22 @@ void checkStatus()
           else if (!rp->doSoC || (rp->doSoC && st.stateOfChargeValid && st.stateOfCharge < rp->rec))
             relay[y] = HIGH; // on
           // else leave it as-is
+          break;
+        case Relay_Therm:
+          uint8_t val=255;
+          switch (rp->therm) {
+            case 'b': val = st.curBoardTemp;
+              break;
+            case 'c':
+              for (int i=0;i<dynSets.nCells;i++)
+                if (val < st.cells[i].exTemp)
+                  val = st.cells[i].exTemp;
+              break;
+          }
+          if (val < rp->trip)
+            relay[y] = HIGH;
+          else if (val > rp->rec)
+            relay[y] = LOW;
           break;
       }
     }

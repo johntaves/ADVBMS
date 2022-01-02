@@ -73,7 +73,7 @@ struct StrMsg {
 #define CHECKSTATUS 2000
 
 enum {
-  Relay_Connect,Relay_Load,Relay_Charge
+  Relay_Connect,Relay_Load,Relay_Charge,Relay_Therm
 };
 
 struct Cells {
@@ -84,7 +84,7 @@ struct Cells {
 struct BMSStatus {
   uint8_t crc,cmd;
   uint8_t stateOfCharge,watchDogHits;
-  int8_t curTemp1,milliRolls;
+  int8_t curBoardTemp,milliRolls;
   uint16_t lastPackMilliVolts,maxDiffMilliVolts;
   uint32_t BatAHMeasured,lastMillis;
   int32_t lastPVMicroAmps,lastMicroAmps,lastAdjMillAmpHrs;
@@ -110,12 +110,13 @@ struct LimitConsts {
 struct RelaySettings {
   char name[16],from[16];
   bool off,doSoC,fullChg;
-  uint8_t type,trip,rec,rank;
+  uint8_t type,trip,rec;
+  char therm;
 };
 
 struct StatSetts {
   uint8_t crc,cmd;
-  bool useCellC,useTemp1;
+  bool useCellC,useBoardTemp;
   uint16_t limits[2][2][2][2],FloatV,ChargeRate,bdVolts;
   RelaySettings relays[C_RELAY_TOTAL];
   uint8_t ChargePct,ChargePctRec,CellsOutMin,CellsOutMax,CellsOutTime;

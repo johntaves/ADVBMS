@@ -56,6 +56,7 @@ void InitRelays(RelaySettings* rp,int num) {
       r->rec = 0;
       r->trip = 0;
       r->type = 0;
+      r->therm = 'b';
   }
 }
 

@@ -326,7 +326,7 @@ void checkStatus()
   if (dynSets.cellSets.delay)
     delay(dynSets.cellSets.delay);
   uint16_t vp;
-  st.curTemp1 = BMSReadTemp(TEMP1,statSets.bdVolts,BCOEF,47000,47000,dynSets.cellSets.cnt,&vp);
+  st.curBoardTemp = BMSReadTemp(TEMP1,statSets.bdVolts,BCOEF,47000,47000,dynSets.cellSets.cnt,&vp);
   if (!dynSets.cellSets.resPwrOn)
     digitalWrite(RESISTOR_PWR,LOW);
   if (INADevs > 0) {
@@ -449,14 +449,14 @@ void checkStatus()
   if (!statSets.useCellC || (st.minCellCState && allundertemprec))
     st.minCellCState = false;
 
-  if (statSets.useTemp1) {
-    if (st.curTemp1 > statSets.limits[LimitConsts::Temp][LimitConsts::Pack][LimitConsts::Max][LimitConsts::Trip])
+  if (statSets.useBoardTemp) {
+    if (st.curBoardTemp > statSets.limits[LimitConsts::Temp][LimitConsts::Pack][LimitConsts::Max][LimitConsts::Trip])
       st.maxPackCState = true;
-    if (st.curTemp1 < statSets.limits[LimitConsts::Temp][LimitConsts::Pack][LimitConsts::Max][LimitConsts::Rec])
+    if (st.curBoardTemp < statSets.limits[LimitConsts::Temp][LimitConsts::Pack][LimitConsts::Max][LimitConsts::Rec])
       st.maxPackCState = false;
-    if (st.curTemp1 < statSets.limits[LimitConsts::Temp][LimitConsts::Pack][LimitConsts::Min][LimitConsts::Trip])
+    if (st.curBoardTemp < statSets.limits[LimitConsts::Temp][LimitConsts::Pack][LimitConsts::Min][LimitConsts::Trip])
       st.minPackCState = true;
-    if (st.curTemp1 > statSets.limits[LimitConsts::Temp][LimitConsts::Pack][LimitConsts::Min][LimitConsts::Rec])
+    if (st.curBoardTemp > statSets.limits[LimitConsts::Temp][LimitConsts::Pack][LimitConsts::Min][LimitConsts::Rec])
       st.minPackCState = false;
   }
   if (st.lastPackMilliVolts > statSets.limits[LimitConsts::Volt][LimitConsts::Pack][LimitConsts::Max][LimitConsts::Trip]) {
@@ -550,6 +550,22 @@ void checkStatus()
             relay[y] = HIGH; // on
           // else leave it as-is
           break;
+        case Relay_Therm:
+          uint8_t val=255;
+          switch (rp->therm) {
+            case 'b': val = st.curBoardTemp;
+              break;
+            case 'c':
+              for (int i=0;i<dynSets.nCells;i++)
+                if (val < st.cells[i].exTemp)
+                  val = st.cells[i].exTemp;
+              break;
+          }
+          if (val < rp->trip)
+            relay[y] = HIGH;
+          else if (val > rp->rec)
+            relay[y] = LOW;
+          break;
       }
     }
   }
@@ -620,7 +636,7 @@ void initdynSets() {
   dynSets.TopAmps = 6;
 }
 void initstatSets() {
-  statSets.useTemp1 = true;
+  statSets.useBoardTemp = true;
   statSets.useCellC = true;
   statSets.bdVolts = 3300;
   statSets.ChargePct = 100;
@@ -743,8 +759,6 @@ void DoForget(SettingMsg *mp) {
     return;
   missingCell = true;
   Serial.printf("forgetting: %d %s\n",mp->val,cellBLE.addrs[mp->val].toString().c_str());
-  if (cellBLE.addrs[mp->val] == emptyAddress)
-    return;
   cellBLE.addrs[mp->val] = emptyAddress;
   if (!cells[mp->val].pClient) return;
   NimBLEDevice::deleteClient(cells[mp->val].pClient);
@@ -822,6 +836,8 @@ void setup() {
   clearRelays();
   initState();
   INADevs = INA.begin(dynSets.MaxAmps, dynSets.ShuntUOhms);
+  Serial.printf("INA D: %d %s %s\n",INADevs,INA.getDeviceName(0),
+            INA.getDeviceName(1));
   lastShuntMillis = millis();
   setBattAH();
   if (INADevs)
@@ -858,9 +874,11 @@ void loop() {
   }
   if (writeDynSets) {
     writeEE((uint8_t*)&dynSets, sizeof(dynSets), EEPROM_BATTD);
+    Serial.println("Write Dyn");
     writeDynSets = false;
   } else if (writeStatSets) {
     writeEE((uint8_t*)&statSets, sizeof(statSets), EEPROM_BATTS);
+    Serial.println("Write Stat");
     writeStatSets = false;
   } else if (writeCellSet) {
     writeEE((uint8_t*)&cellBLE,sizeof(cellBLE),EEPROM_BLE);

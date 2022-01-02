@@ -13,7 +13,7 @@
     <div id="header">
         <div id="info">
             <div>
-                <div id="temp1" class="stat rt"><div class="h">Temp</div><a href="" class="v"></a></div>
+                <div id="BoardTemp" class="stat rt"><div class="h">Temp</div><a href="" class="v"></a></div>
                 <div id="celltemp" class="stat rt"><div class="h">Cell T</div><div class="v highlight"></div></div>
                 <div id="cellvolt" class="stat"><div class="h">Cell V</div><div class="v highlight"></div></div>
                 <div id="packcurrent" class="stat"><div class="h">Pack (A)</div><div class="v"></div></div>
@@ -42,6 +42,7 @@
         <div id="menu">
             <a href="cells" class="active">Cells</a>
             <a href="limits">Limits</a>
+            <a href="relays">Relays</a>
             <a href="batt">Battery</a>
             <a href="net">Network</a>
         </div>
@@ -75,34 +76,40 @@
                     <input type="number" name="CellsOutMax" id="CellsOutMax" min="0" max="100" step="1" >
                     <label class="rec" for="CellsOutTime">secs:</label>
                     <input type="number" name="CellsOutTime" id="CellsOutTime" min="0" step="10" ></div>
-                <div id="relays">
-                    <div id="relay">
-                        <label for="relayName">J</label>
-                            <input type="text" name="relayName" id="relayName" value="J1">
-                        <select id="relayType" name="relayType">
-                            <option value="E">Main Connect</option>
-                            <option value="L">Load</option>
-                            <option value="LP">Load %</option>
-                            <option value="C">Charger</option>
-                            <option value="CP">Charger %</option>
-                            <option value="CF">Enable Full Charge</option>
-                        </select>
-                        <span id="relayDoSoC">
-                        <label for="relayTrip">Trip:</label>
-                            <input type="number" min="0" max="100" step="1" name="relayTrip" id="relayTrip" value="50">
-                        <label for="relayRec">Rec:</label>
-                            <input type="number" min="0" max="100" step="1" name="relayRec" id="relayRec" value="40"></span>
-                        <span id="relayDoFrom"><label for="relayFrom">From:</label>
-                            <input type="text" name="relayFrom" id="relayFrom" value=""></span>
-                            </div>
-                </div>
                 <div>
                     <label for="bdVolts">Main Board Volts (mV):</label>
                     <input type="number" name="bdVolts" id="bdVolts" value="" required="" maxlength="5" />
                 </div>
             If you turn off all of these, you'd better make sure it won't freeze or overheat.
-                <div><input id="useTemp1" name="useTemp1" type="checkbox" /><label for="useTemp1">Use temperature sensor 1: </label></div>
+                <div><input id="useBoardTemp" name="useBoardTemp" type="checkbox" /><label for="useBoardTemp">Use board temperature: </label></div>
                 <div><input id="useCellC" name="useCellC" type="checkbox" /><label for="useCellC">Use cell temperatures: </label></div>
+                <div class="buttonhold"><input type="submit" value="Save Settings" /></div>
+                </form>
+        </div>
+        <div id="relays">
+            <form method="POST" action="saverelays" autocomplete="off">
+                <div id="relay">
+                    <label for="relayName">J</label>
+                        <input type="text" name="relayName" id="relayName" value="J1">
+                    <select id="relayType" name="relayType">
+                        <option value="E">Main Connect</option>
+                        <option value="L">Load</option>
+                        <option value="LP">Load %</option>
+                        <option value="C">Charger</option>
+                        <option value="CP">Charger %</option>
+                        <option value="CF">Enable Full Charge</option>
+                        <option value="T">Thermostat</option>
+                    </select>
+                    <span id="relayDoSoC">
+                    <label for="relayTrip">Trip:</label>
+                        <input type="number" min="0" max="100" step="1" name="relayTrip" id="relayTrip" value="50">
+                    <label for="relayRec">Rec:</label>
+                        <input type="number" min="0" max="100" step="1" name="relayRec" id="relayRec" value="40"></span>
+                    <span id="relayDoFrom"><label for="relayFrom">From:</label>
+                        <input type="text" name="relayFrom" id="relayFrom" value=""></span>
+                    <span id="relayDoTherm"><label for="relayTherm">Temp:</label>
+                        <select id="relayTherm" name="relayTherm"><option value="b">Board Temp</option><option value="c">Cell Temp</option></select></span>
+                                </div>
                 <div class="buttonhold"><input type="submit" value="Save Settings" /></div>
             </form>
         </div>

@@ -322,19 +322,21 @@ function getSettings(s) {
                 $("#CellsOutMax").val(data.CellsOutMax);
                 $("#CellsOutTime").val(data.CellsOutTime);
                 $("#bdVolts").val(data.bdVolts);
-
                 $.each(data.limitSettings, function (index, value) {
                     $("#" + index).val(value);
                 });
-                $("#useTemp1").prop("checked", data.useTemp1);
+                $("#useBoardTemp").prop("checked", data.useBoardTemp);
                 $("#useCellC").prop("checked", data.useCellC);
 
+
+            } else if (s == "relays") {
                 $.each(data.relaySettings, function (index, value) {
                     $("#relayName" + index).val(value.name);
                     $("#relayFrom" + index).val(value.from);
                     setRelayType.call($("#relayType" + index).val(value.type));
                     $("#relayTrip" + index).val(value.trip);
                     $("#relayRec" + index).val(value.rec);
+                    $("#relayTherm" + index).val(value.rank);
                 });
             }
         }).fail(function () { }
@@ -430,15 +432,15 @@ function queryBMS() {
             val = val + " under";
         $("#celltemp .v").html(val);
 
-        val = data.temp1;
+        val = data.BoardTemp;
         if (data.maxPackCState || data.minPackCState)
-            $("#temp1 .v").addClass("highlighted")
-        else $("#temp1 .v").removeClass("highlighted")
+            $("#BoardTemp .v").addClass("highlighted")
+        else $("#BoardTemp .v").removeClass("highlighted")
         if (data.maxPackCState)
             val = "over " + val;
         if (data.minPackCState)
             val = "under " + val;
-        $("#temp1 .v").html(val);
+        $("#BoardTemp .v").html(val);
 
         $("#uptimec .v").html(data.uptimec);
         $("#uptimew .v").html(data.uptimew);
@@ -512,7 +514,7 @@ function toggleTemp() {
         type: "GET",
         url: "/toggleTemp",
         success: function (data) {
-            convertTemp(data.val,"#temp1");
+            convertTemp(data.val,"#BoardTemp");
             $("#savesuccess").show().delay(2000).fadeOut(500);
         },
         error: function (data) {
@@ -525,12 +527,15 @@ function toggleTemp() {
 function setRelayType() {
     var r = $(this).attr("relay");
     var val = $(this).val();
-    if (val == "CP" || val == "LP")
+    if (val == "CP" || val == "LP" || val == "T" || val == "B")
         $("#relayDoSoC"+r).show();
     else $("#relayDoSoC"+r).hide();
     if (val == "L" || val == "LP")
-    $("#relayDoFrom"+r).show();
+        $("#relayDoFrom"+r).show();
     else $("#relayDoFrom"+r).hide();
+    if (val == "B" || val == "T")
+        $("#relayDoTherm"+r).show();
+    else $("#relayDoTherm"+r).hide();
 }
 
 function setupRelays(rt) {
@@ -538,7 +543,7 @@ function setupRelays(rt) {
         var temp = $("#relay").clone();
         temp.attr({id: "relay"+rel});
         temp.find("[for='relayName']").text("J"+rel+":");
-        $.each(['Name','DoSoC','Type','Trip','Rec','DoFrom','From'],function (index,value) {
+        $.each(['Name','DoSoC','Type','Trip','Rec','Therm','DoFrom','From','DoTherm'],function (index,value) {
             temp.find('#relay'+value).attr({id: "relay"+value+rel, name: "relay"+value+rel});
         });
         temp.find("[for]").each(function(index) {
@@ -601,7 +606,7 @@ function Setup() {
 
     $("#loading").show();
 
-    $("#temp1 a").click(toggleTemp);
+    $("#BoardTemp a").click(toggleTemp);
     var LIMITNames = [['Volts (mV):','Temp (C):'],['Cell','Pack'],['Max','Min'],['Trip:','Rec:']];
     for (var l0=0;l0<LIMITNames[0].length;l0++) {
         for (var l1=0;l1<LIMITNames[1].length;l1++) {
