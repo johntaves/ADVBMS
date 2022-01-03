@@ -262,9 +262,9 @@ void relays(AsyncWebServerRequest *request){
       case Relay_Therm: rule1["type"] = "T";break;
     }
     
-    rule1["trip"] =rp->trip;
-    rule1["rec"] =rp->rec;
-    rule1["therm"] =rp->therm;
+    rule1["trip"] = rp->trip;
+    rule1["rec"] = rp->rec;
+    rule1["therm"] = std::string(1, rp->therm);
   }
 
   serializeJson(doc, *response);

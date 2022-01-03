@@ -54,8 +54,7 @@ bool inAlertState = true;
 #define MAX_CELLV (statSets.limits[LimitConsts::Volt][LimitConsts::Cell][LimitConsts::Max][LimitConsts::Trip])
 NimBLEScan* pBLEScan;
 
-INA_Class         INA;
-int INADevs;
+INA_Class         INA(2);
 uint32_t lastShuntMillis;
 int64_t milliAmpMillis,battMilliAmpMillis,accumMilliAmpMillis;
 int curAdj;
@@ -329,45 +328,35 @@ void checkStatus()
   st.curBoardTemp = BMSReadTemp(TEMP1,statSets.bdVolts,BCOEF,47000,47000,dynSets.cellSets.cnt,&vp);
   if (!dynSets.cellSets.resPwrOn)
     digitalWrite(RESISTOR_PWR,LOW);
-  if (INADevs > 0) {
-    if ((st.lastMicroAmps > 0 && chgOff) || (st.lastMicroAmps < 0 && loadsOff)) {
-      if (!inAlertState) {
-        uint16_t maxCellV = 0;
-        uint16_t minCellV = 0xffff;
-        for (int j=0;j<dynSets.nCells;j++) {
-          uint16_t cellV = st.cells[j].volts;
-          if (cellV > maxCellV)
-            maxCellV = cellV;
-          if (cellV < minCellV)
-            minCellV = cellV;
-        }
-        StrMsg msg;
-        msg.cmd = Panic;
-        snprintf(msg.msg,sizeof(msg.msg),"uA=%d, chg: %d, Lds: %d, pack: %dmV, max cell: %dmV, min cell: %dmV, MxPV: %d, MxCV: %d, MnPV: %d, MnCV %d, MxCC: %d, MxPC: %d"
-            ,st.lastMicroAmps,chgOff,loadsOff,(int)st.lastPackMilliVolts,(int)maxCellV,(int)minCellV
-            ,st.maxPackVState,st.maxCellVState,st.minPackVState,st.minCellVState,st.maxCellCState,st.maxPackCState);
-        BMSSend(&msg);
-        clearRelays();
-        inAlertState = true;
+  if ((st.lastMicroAmps > 0 && chgOff) || (st.lastMicroAmps < 0 && loadsOff)) {
+    if (!inAlertState) {
+      uint16_t maxCellV = 0;
+      uint16_t minCellV = 0xffff;
+      for (int j=0;j<dynSets.nCells;j++) {
+        uint16_t cellV = st.cells[j].volts;
+        if (cellV > maxCellV)
+          maxCellV = cellV;
+        if (cellV < minCellV)
+          minCellV = cellV;
       }
-    } else if (inAlertState) {
-      inAlertState = false;
-      AMsg msg;
-      msg.cmd = NoPanic;
+      StrMsg msg;
+      msg.cmd = Panic;
+      snprintf(msg.msg,sizeof(msg.msg),"uA=%d, chg: %d, Lds: %d, pack: %dmV, max cell: %dmV, min cell: %dmV, MxPV: %d, MxCV: %d, MnPV: %d, MnCV %d, MxCC: %d, MxPC: %d"
+          ,st.lastMicroAmps,chgOff,loadsOff,(int)st.lastPackMilliVolts,(int)maxCellV,(int)minCellV
+          ,st.maxPackVState,st.maxCellVState,st.minPackVState,st.minCellVState,st.maxCellCState,st.maxPackCState);
       BMSSend(&msg);
+      clearRelays();
+      inAlertState = true;
     }
+  } else if (inAlertState) {
+    inAlertState = false;
+    AMsg msg;
+    msg.cmd = NoPanic;
+    BMSSend(&msg);
   }
-
-  if (INADevs > 0) {
-    if (battMilliAmpMillis != 0)
-      st.stateOfCharge = milliAmpMillis * 100 / battMilliAmpMillis;
-    st.lastPackMilliVolts = INA.getBusMilliVolts(0);
-  }
-  if (INADevs == 0 || st.lastPackMilliVolts < 1000) { // low side shunt
-    st.lastPackMilliVolts = 0;
-    for (int8_t i = 0; i < dynSets.nCells; i++)
-      st.lastPackMilliVolts += st.cells[i].volts;
-  }
+  if (battMilliAmpMillis != 0)
+    st.stateOfCharge = milliAmpMillis * 100 / battMilliAmpMillis;
+  st.lastPackMilliVolts = INA.getBusMilliVolts(0);
 
   bool allovervoltrec = true,allundervoltrec = true,hitTop=false,hitUnder=false;
   bool allovertemprec = true,allundertemprec = true;
@@ -835,13 +824,12 @@ void setup() {
     pinMode(relayPins[i],OUTPUT);
   clearRelays();
   initState();
-  INADevs = INA.begin(dynSets.MaxAmps, dynSets.ShuntUOhms);
-  Serial.printf("INA D: %d %s %s\n",INADevs,INA.getDeviceName(0),
+  INA.begin(dynSets.MaxAmps, dynSets.ShuntUOhms);
+  Serial.printf("INA D: %s %s\n",INA.getDeviceName(0),
             INA.getDeviceName(1));
   lastShuntMillis = millis();
   setBattAH();
-  if (INADevs)
-    setINAs();
+  setINAs();
 
   configTime(0,0,"pool.ntp.org");
   setStateOfCharge((battMilliAmpMillis * 4)/5,false);
@@ -884,18 +872,17 @@ void loop() {
     writeEE((uint8_t*)&cellBLE,sizeof(cellBLE),EEPROM_BLE);
     writeCellSet = false;
   }
-  if (INADevs > 0) {
-    if (updateINAs)
-     setINAs();
-    updateINAs = false;
-    if ((millis() - shuntPollMS) > dynSets.PollFreq) {
-      getAmps();
-      shuntPollMS = millis();
-    }
-    if (INADevs > 1 && (millis() - pvPollMS) > POLLPV) {
-      st.lastPVMicroAmps = INA.getBusMicroAmps(1);
-      pvPollMS = millis();
-    }
+  if (updateINAs)
+    setINAs();
+  updateINAs = false;
+  if ((millis() - shuntPollMS) > dynSets.PollFreq) {
+    getAmps();
+    shuntPollMS = millis();
+  }
+  if ((millis() - pvPollMS) > POLLPV) {
+    st.lastPVMicroAmps = INA.getBusMicroAmps(1);
+    Serial.printf("PV V:%d\n",INA.getBusMilliVolts(1));
+    pvPollMS = millis();
   }
 
   if ((millis() - statusMS) > CHECKSTATUS)

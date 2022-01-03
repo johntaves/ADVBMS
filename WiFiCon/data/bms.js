@@ -336,7 +336,7 @@ function getSettings(s) {
                     setRelayType.call($("#relayType" + index).val(value.type));
                     $("#relayTrip" + index).val(value.trip);
                     $("#relayRec" + index).val(value.rec);
-                    $("#relayTherm" + index).val(value.rank);
+                    $("#relayTherm" + index).val(value.therm);
                 });
             }
         }).fail(function () { }
