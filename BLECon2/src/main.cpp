@@ -163,11 +163,10 @@ void sendCellSet(int i) {
   NimBLEClient*  pC = cells[i].pClient;
   if (!pC || !pC->isConnected())
     return;
-  if (!cells[i].pSettings) {
-    Serial.printf("Badness here\n");
+  if (cells[i].pSettings) {
+    cells[i].pSettings->writeValue<CellSettings>(dynSets.cellSets,false);
+    cells[i].cellSentSet = true;
   }
-  cells[i].pSettings->writeValue<CellSettings>(dynSets.cellSets,false);
-  cells[i].cellSentSet = true;
 }
 
 class MyClientCallback : public NimBLEClientCallbacks {
@@ -580,12 +579,13 @@ void checkStatus()
 void setINAs() {
   INA.begin(dynSets.MaxAmps, dynSets.ShuntUOhms,0);
   INA.begin(dynSets.PVMaxAmps,dynSets.PVShuntUOhms,1);
-  INA.setShuntConversion(dynSets.ConvTime,0);
-  INA.setBusConversion(dynSets.ConvTime,0);
-  INA.setAveraging(dynSets.Avg,0);
-  INA.setShuntConversion(dynSets.PVConvTime,1);
-  INA.setBusConversion(dynSets.PVConvTime,1);
-  INA.setAveraging(dynSets.PVAvg,1);
+  INA.setShuntConversion(dynSets.ConvTime);
+  INA.setBusConversion(dynSets.ConvTime);
+  INA.setAveraging(dynSets.Avg);
+//  INA.setShuntConversion(dynSets.PVConvTime,1);
+//  INA.setBusConversion(dynSets.PVConvTime,1);
+//  INA.setAveraging(dynSets.PVAvg,1);
+Serial.printf("%d %d %d %d\n",dynSets.ConvTime,dynSets.Avg,dynSets.PVConvTime,dynSets.PVAvg);
 }
 
 void setStateOfCharge(int64_t val,bool valid) {
@@ -685,6 +685,7 @@ void DoSetting(uint8_t cmd,uint16_t val) {
           Serial.printf("Deleting %d\n",i);
           NimBLEDevice::deleteClient(cells[i].pClient);
           cells[i].pClient = NULL;
+          cells[i].pSettings = NULL;
           cellBLE.addrs[i] = emptyAddress;
         }
         cellBLE.numCells = dynSets.nCells;

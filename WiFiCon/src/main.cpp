@@ -665,9 +665,9 @@ void savecapacity(AsyncWebServerRequest *request) {
   saveItem(request,"CurSOC",SetCurSOC,101);
   saveItem(request,"PollFreq",SetPollFreq,dynSets.PollFreq);
   saveItem(request,"Avg",SetAvg,dynSets.Avg);
-  saveItem(request,"ConvTime", SetPVConvTime,dynSets.ConvTime);
+  saveItem(request,"ConvTime", SetConvTime,dynSets.ConvTime);
   saveItem(request,"PVAvg",SetPVAvg,dynSets.PVAvg);
-  saveItem(request,"PVConvTime", SetConvTime,dynSets.PVConvTime);
+  saveItem(request,"PVConvTime", SetPVConvTime,dynSets.PVConvTime);
   saveItem(request,"BattAH",SetBattAH,dynSets.BattAH);
   saveItem(request,"TopAmps",SetTopAmps,dynSets.TopAmps);
   saveItem(request,"MaxAmps",SetMaxAmps,dynSets.MaxAmps);
