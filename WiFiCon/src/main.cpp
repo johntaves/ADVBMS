@@ -865,7 +865,7 @@ void setup() {
   Serial.begin(9600);
   pinMode(GREEN_LED, OUTPUT);
   digitalWrite(GREEN_LED,1);
-  BMSInitCom(EEPROMSize,&WonSerData);
+  BMSInitCom(&WonSerData);
   Wire.begin();
   if(!SPIFFS.begin()){
     Serial.println("An Error has occurred while mounting SPIFFS");
@@ -873,7 +873,7 @@ void setup() {
   }
   debugstr[0] = 0;
   dynSets.cmd = Nada;
-  if (!readEE((uint8_t*)&wifiSets, sizeof(wifiSets), EEPROM_WIFI)) {
+  if (!readEE("wifi",(uint8_t*)&wifiSets, sizeof(wifiSets))) {
     wifiSets.ssid[0] = 0;
     wifiSets.password[0] = 0;
     wifiSets.apName[0] = 0;
@@ -883,7 +883,7 @@ void setup() {
   WiFiInit();
   InitOTA();
 
-  if (!readEE((uint8_t*)&commSets,sizeof(commSets),EEPROM_COMM)) {
+  if (!readEE("comm",(uint8_t*)&commSets,sizeof(commSets))) {
     commSets.email[0] = 0;
     commSets.senderEmail[0] = 0;
     commSets.senderServer[0] = 0;
@@ -895,10 +895,10 @@ void setup() {
     commSets.doLogging = false;
   } else doCommSettings();
 
-  if (!readEE((uint8_t*)&relSets,sizeof(relSets),EEPROM_RELAYS))
+  if (!readEE("relay",(uint8_t*)&relSets,sizeof(relSets)))
     InitRelays(&relSets.relays[0],W_RELAY_TOTAL);
 
-  if (!readEE((uint8_t*)&dispSets,sizeof(dispSets),EEPROM_DISP))
+  if (!readEE("disp",(uint8_t*)&dispSets,sizeof(dispSets)))
     dispSets.doCelsius = true;
 
   for (int i=0;i<W_RELAY_TOTAL;i++)
@@ -923,17 +923,17 @@ void loop() {
   lastMillis = millis(); // for uptime to continue after 50 days
 
   if (writeCommSet) {
-    writeEE((uint8_t*)&commSets,sizeof(commSets),EEPROM_COMM);
+    writeEE("comm",(uint8_t*)&commSets,sizeof(commSets));
     writeCommSet = false;
   } else if (writeWifiSet) {
-    writeEE((uint8_t*)&wifiSets,sizeof(wifiSets),EEPROM_WIFI);
+    writeEE("wifi",(uint8_t*)&wifiSets,sizeof(wifiSets));
     WiFiInit();
     writeWifiSet = false;
   } else if (writeDispSet) {
-    writeEE((uint8_t*)&dispSets,sizeof(dispSets),EEPROM_DISP);
+    writeEE("disp",(uint8_t*)&dispSets,sizeof(dispSets));
     writeDispSet = false;
   } else if (writeRelaySet) {
-    writeEE((uint8_t*)&relSets,sizeof(relSets),EEPROM_RELAYS);
+    writeEE("relay",(uint8_t*)&relSets,sizeof(relSets));
     writeRelaySet = false;
   }
 

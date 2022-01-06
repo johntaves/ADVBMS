@@ -81,12 +81,6 @@ void initState() {
   st.BatAHMeasured = 0;
 }
 
-void saveStatus() {
-  dynSets.milliAmpMillis = milliAmpMillis;
-  dynSets.savedTime = time(nullptr);
-  writeEE((uint8_t*)&dynSets, sizeof(dynSets), EEPROM_BATTD);
-}
-
 void getAmps() {
   st.lastMicroAmps = -INA.getBusMicroAmps(0);
 
@@ -792,11 +786,10 @@ void setup() {
   Serial.begin(9600);
   BMSADCInit();
   adc1_config_channel_atten(TEMP1, ADC_ATTEN_DB_11);
-
   pinMode(GREEN_LED, OUTPUT);
   pinMode(RESISTOR_PWR, OUTPUT);
   digitalWrite(GREEN_LED,1);
-  BMSInitCom(EEPROMSize,ConSerData);
+  BMSInitCom(ConSerData);
   Wire.begin();
   for (int i=0;i<MAX_CELLS;i++) cells[i].pClient = NULL;
 
@@ -807,13 +800,13 @@ void setup() {
   pBLEScan->setAdvertisedDeviceCallbacks(new adCB(), false);
   pBLEScan->setMaxResults(0); // do not store the scan results, use callback only.
 
-  if (!readEE((uint8_t*)&statSets,sizeof(statSets),EEPROM_BATTS))
+  if (!readEE("battS",(uint8_t*)&statSets,sizeof(statSets)))
     initstatSets();
 
-  if (!readEE((uint8_t*)&dynSets,sizeof(dynSets),EEPROM_BATTD))
+  if (!readEE("battD",(uint8_t*)&dynSets,sizeof(dynSets)))
     initdynSets();
 
-  if (!readEE((uint8_t*)&cellBLE,sizeof(cellBLE),EEPROM_BLE))
+  if (!readEE("ble",(uint8_t*)&cellBLE,sizeof(cellBLE)))
     cellBLE.numCells = 0;
 
   Serial.printf("ncells %d\n",cellBLE.numCells);
@@ -862,15 +855,15 @@ void loop() {
     } else saveTimeDiff = now - dynSets.savedTime;
   }
   if (writeDynSets) {
-    writeEE((uint8_t*)&dynSets, sizeof(dynSets), EEPROM_BATTD);
+    writeEE("battD",(uint8_t*)&dynSets, sizeof(dynSets));
     Serial.println("Write Dyn");
     writeDynSets = false;
   } else if (writeStatSets) {
-    writeEE((uint8_t*)&statSets, sizeof(statSets), EEPROM_BATTS);
+    writeEE("battS",(uint8_t*)&statSets, sizeof(statSets));
     Serial.println("Write Stat");
     writeStatSets = false;
   } else if (writeCellSet) {
-    writeEE((uint8_t*)&cellBLE,sizeof(cellBLE),EEPROM_BLE);
+    writeEE("ble",(uint8_t*)&cellBLE,sizeof(cellBLE));
     writeCellSet = false;
   }
   if (updateINAs)
@@ -882,7 +875,6 @@ void loop() {
   }
   if ((millis() - pvPollMS) > POLLPV) {
     st.lastPVMicroAmps = INA.getBusMicroAmps(1);
-    Serial.printf("PV V:%d\n",INA.getBusMilliVolts(1));
     pvPollMS = millis();
   }
 

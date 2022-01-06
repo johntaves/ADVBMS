@@ -1,5 +1,5 @@
 
-#include <EEPROM.h>
+#include <Preferences.h>
 #include <string.h>
 #include "BMSCommArd.h"
 #include <PacketSerial.h>
@@ -7,6 +7,7 @@
 #define CPUBAUD 115200
 
 PacketSerial_<COBS, 0, sizeof(union MaxData)+10> dataSer;
+Preferences pref;
 void (*commCB)(const AMsg* buf);
 
 uint8_t CRC8(const uint8_t *data,uint16_t length) 
@@ -31,18 +32,22 @@ uint8_t CRC8(const uint8_t *data,uint16_t length)
 }
 
 
-bool readEE(uint8_t *p,size_t s,uint32_t start) {
-  EEPROM.readBytes(start,p,s);
+bool readEE(const char* name,uint8_t *p,size_t s) {
+  char buf[10];
+  snprintf(buf,sizeof(buf),"%sC",name);
+  if (!pref.getBytes(name,p,s))
+    return false;
   uint8_t checksum = CRC8(p, s);
-  uint8_t ck = EEPROM.read(start+s);
+  uint8_t ck = pref.getUChar(buf);
   return checksum == ck;
 }
 
-void writeEE(uint8_t *p,size_t s,uint32_t start) {
+void writeEE(const char* name,uint8_t *p,size_t s) {
+  char buf[10];
+  snprintf(buf,sizeof(buf),"%sC",name);
   uint8_t crc = CRC8(p, s);
-  EEPROM.writeBytes(start,p,s);
-  EEPROM.write(start+s,crc);
-  EEPROM.commit();
+  pref.putBytes(name,p,s);
+  pref.putUChar(buf,crc);
 }
 
 void InitRelays(RelaySettings* rp,int num) {
@@ -96,13 +101,13 @@ void onSerData(const uint8_t *d, size_t cnt)
   }
 }
 
-void BMSInitCom(size_t sz,void (*func)(const AMsg* buf)) {
+void BMSInitCom(void (*func)(const AMsg* buf)) {
 
   commCB = func;
   Serial2.begin(CPUBAUD);
   dataSer.setStream(&Serial2); // start serial for output
   dataSer.setPacketHandler(&onSerData);
-  EEPROM.begin(sz);
+  pref.begin("ee");
 
 }
 

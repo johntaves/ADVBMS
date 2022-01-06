@@ -150,15 +150,15 @@ union MaxData {
 
 extern void InitRelays(RelaySettings* r,int num);
 extern uint8_t CRC8(const uint8_t *data,uint16_t length);
-extern void BMSInitCom(size_t s,void (*func)(const AMsg* mp));
+extern void BMSInitCom(void (*func)(const AMsg* mp));
 extern void BMSSendRaw(uint8_t *d,uint16_t len);
 template <typename T>
 void BMSSend(T* m) {
   BMSSendRaw((uint8_t*)m,sizeof(T));
 }
 
-extern bool readEE(uint8_t *p,size_t s,uint32_t start);
-extern void writeEE(uint8_t *p,size_t s,uint32_t start);
+extern bool readEE(const char* name,uint8_t *p,size_t s);
+extern void writeEE(const char* name,uint8_t *p,size_t s);
 extern void InitRelays(RelaySettings* rp,int num);
 extern void BMSSend(StrMsg* m);
 extern bool BMSWaitFor(AMsg*d,uint8_t cmd);

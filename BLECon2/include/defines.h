@@ -21,13 +21,4 @@ struct BLESettings {
   NimBLEAddress addrs[MAX_CELLS];
 };
 
-#define EEPROM_BATTS 0
-#define EEPROM_BATTD (EEPROM_BATTS+512)
-#define EEPROM_BLE (EEPROM_BATTD+512)
-#define EEPROMSize (EEPROM_BLE+256)
-
-static_assert(sizeof(StatSetts) < 512,"EEPROM Size 0");
-static_assert(sizeof(DynSetts) < 512,"EEPROM Size 0");
-static_assert(sizeof(BLESettings) < 256,"EEPROM Size 1");
-
 #endif

@@ -35,15 +35,4 @@ struct DispSettings {
   bool doCelsius;
 };
 
-#define EEPROM_WIFI 0
-#define EEPROM_COMM (EEPROM_WIFI+256)
-#define EEPROM_RELAYS (EEPROM_COMM+512)
-#define EEPROM_DISP (EEPROM_RELAYS+256)
-#define EEPROMSize (EEPROM_DISP+16)
-
-static_assert(sizeof(WiFiSettings) < 256,"EEPROM Size 1");
-static_assert(sizeof(CommSettings) < 512,"EEPROM Size 2");
-static_assert(sizeof(DispSettings) < 16,"EEPROM Size 3");
-static_assert(sizeof(WRelaySettings) < 256,"EEPROM Size 3");
-
 #endif
