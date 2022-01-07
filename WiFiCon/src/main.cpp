@@ -22,7 +22,7 @@
 char debugstr[200],lastEventMsg[1024];
 int8_t lastEventMsgCnt=0;
 bool emailSetup=false,writeCommSet=false,writeWifiSet=false,writeDispSet=false,writeRelaySet=false;
-uint16_t statusMS=0;
+uint32_t statusMS=0;
 HTTPClient http;
 atomic_flag taskRunning(0);
 bool OTAInProg = false;
@@ -795,7 +795,7 @@ void checkStatus()
               break;
             case 'c':
               for (int i=0;i<dynSets.nCells;i++)
-                if (val < st.cells[i].exTemp)
+                if (st.cells[i].exTemp < val)
                   val = st.cells[i].exTemp;
               break;
           }
@@ -944,7 +944,7 @@ void loop() {
       Serial.println("Error sending Email, " + MailClient.smtpErrorReason());
     sendEmail = false;
   }
-  if ((millis() - statusMS) > CHECKSTATUS)
+  if ((millis() - statusMS) > (CHECKSTATUS+100)) /* +100 to deal with slop so this doesn't trigger if the Status message triggered it */
     checkStatus();
 
   ArduinoOTA.handle(); // this does nothing until it is initialized

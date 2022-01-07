@@ -539,7 +539,7 @@ void checkStatus()
               break;
             case 'c':
               for (int i=0;i<dynSets.nCells;i++)
-                if (val < st.cells[i].exTemp)
+                if (st.cells[i].exTemp < val)
                   val = st.cells[i].exTemp;
               break;
           }
