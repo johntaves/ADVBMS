@@ -94,8 +94,6 @@ void onSerData(const uint8_t *d, size_t cnt)
 {
   if (cnt && CRC8(&d[1],cnt-1) == d[0] && commCB) {
     AMsg* m = (AMsg*)d;
-    if (m->cmd != Status)
-      printf("Rec: %d, %d, 0x%x\n",d[1],cnt,d[0]);
     commCB(m);
     lastCmd = m->cmd;
   }

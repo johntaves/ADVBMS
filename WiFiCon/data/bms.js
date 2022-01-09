@@ -330,6 +330,7 @@ function getSettings(s) {
 
 
             } else if (s == "relays") {
+                $("#slideSecs").val(data.slideSecs);
                 $.each(data.relaySettings, function (index, value) {
                     $("#relayName" + index).val(value.name);
                     $("#relayFrom" + index).val(value.from);
@@ -368,10 +369,22 @@ function queryBMS() {
             if (rn && rn.length) {
                 $("#relayStatus"+i).show();
                 $("#relayStatus"+i+" .h").html(rn);
-                $("#relayStatus"+i+" .v").html(data["relayStatus"+i]);
-                if (data["relayOff"+i] == "off")
-                    $("#relayStatus"+i+" .v").addClass("manoff");
-                else $("#relayStatus"+i+" .v").removeClass("manoff");
+                if (data["relaySlide"+i]) {
+                    $("#relayStatus"+i+" .v").hide();
+                    $("#relayStatus"+i+" .s").show();
+                    $("#relayStatus"+i+" .i").removeClass("manoff");
+                    $("#relayStatus"+i+" .o").removeClass("manoff");
+                    if (data["relaySliding"+i] == "out")
+                        $("#relayStatus"+i+" .o").addClass("manoff");
+                    else if (data["relaySliding"+i] == "in")
+                        $("#relayStatus"+i+" .i").addClass("manoff");
+                } else {
+                    $("#relayStatus"+i+" .v").html(data["relayStatus"+i]).show();
+                    $("#relayStatus"+i+" .s").hide();
+                    if (data["relayOff"+i] == "off")
+                        $("#relayStatus"+i+" .v").addClass("manoff");
+                    else $("#relayStatus"+i+" .v").removeClass("manoff");
+                }
             } else $("#relayStatus"+i).hide();
         }
         if (data.watchDogHits) {
@@ -543,6 +556,9 @@ function setupRelays(rt) {
         var temp = $("#relay").clone();
         temp.attr({id: "relay"+rel});
         temp.find("[for='relayName']").text("J"+rel+":");
+        if (rel < 8) {
+            temp.find("#relayType option[value='S'],#relayType option[value='D']").hide();
+        }
         $.each(['Name','DoSoC','Type','Trip','Rec','Therm','DoFrom','From','DoTherm'],function (index,value) {
             temp.find('#relay'+value).attr({id: "relay"+value+rel, name: "relay"+value+rel});
         });
@@ -556,7 +572,7 @@ function setupRelays(rt) {
         temp.insertBefore("#relay");
         temp = $("#relayStatus").clone();
         temp.attr({id: "relayStatus"+rel});
-        var theA = temp.find("a");
+        var theA = temp.find("a.v");
         theA.attr("relay",rel);
         theA.click(function () {
             var r = $(this).attr("relay");
@@ -577,7 +593,22 @@ function setupRelays(rt) {
             });
             return false;
          });
-        temp.insertBefore("#relayStatus");
+         var theA = temp.find("a.o,a.i");
+         theA.attr("relay",rel);
+         theA.click(function () {
+             var r = $(this).attr("relay");
+             $.ajax({
+                 type: "POST",
+                 url: "/slide",
+                 data: { relay: r, dir:$(this).hasClass("o"), stop: $(this).hasClass("manoff")},
+                 dataType:'json',
+                 error: function (data) {
+                     $("#saveerror").show().delay(2000).fadeOut(500);
+                 }
+             });
+             return false;
+          });
+         temp.insertBefore("#relayStatus");
     }
     $("#relay").remove();
     $("#relayStatus").remove();

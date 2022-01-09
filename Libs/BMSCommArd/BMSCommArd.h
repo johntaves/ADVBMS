@@ -73,7 +73,7 @@ struct StrMsg {
 #define CHECKSTATUS 2000
 
 enum {
-  Relay_Connect,Relay_Load,Relay_Charge,Relay_Therm
+  Relay_Connect,Relay_Load,Relay_Charge,Relay_Therm,Relay_Direction,Relay_Slide
 };
 
 struct Cells {
@@ -119,7 +119,7 @@ struct StatSetts {
   bool useCellC,useBoardTemp;
   uint16_t limits[2][2][2][2],FloatV,ChargeRate,bdVolts;
   RelaySettings relays[C_RELAY_TOTAL];
-  uint8_t ChargePct,ChargePctRec,CellsOutMin,CellsOutMax,CellsOutTime;
+  uint8_t ChargePct,ChargePctRec,CellsOutMin,CellsOutMax,CellsOutTime,slideSecs;
 };
 
 struct DynSetts {

@@ -44,6 +44,8 @@ bool sendEmail = false,inAlertState = true;
 AsyncWebServer server(80);
 SMTPData smtpData;
 uint8_t previousRelayState[W_RELAY_TOTAL];
+uint32_t slideStart[W_RELAY_TOTAL];
+bool sliding[W_RELAY_TOTAL],slidingOut;
 String emailRes = "";
 
 uint8_t milliRolls=0;
@@ -247,6 +249,7 @@ void relays(AsyncWebServerRequest *request){
   DynamicJsonDocument doc(8192);
   JsonObject root = doc.to<JsonObject>();
   root["notRecd"] = notRecd;
+  root["slideSecs"]=statSets.slideSecs;
   JsonArray rsArray = root.createNestedArray("relaySettings");
   for (uint8_t r = 0; r < RELAY_TOTAL; r++) {
     JsonObject rule1 = rsArray.createNestedObject();
@@ -260,6 +263,8 @@ void relays(AsyncWebServerRequest *request){
       case Relay_Load: rule1["type"] = (rp->doSoC?"LP":"L"); break;
       case Relay_Charge: rule1["type"] = (rp->doSoC?"CP":(rp->fullChg?"CF":"C")); break;
       case Relay_Therm: rule1["type"] = "T";break;
+      case Relay_Slide: rule1["type"] = "S"; break;
+      case Relay_Direction: rule1["type"] = "D"; break;
     }
     
     rule1["trip"] = rp->trip;
@@ -333,6 +338,32 @@ void saveOff(AsyncWebServerRequest *request) {
     request->send(response);
 
   } else request->send(500, "text/plain", "Missing parameters");
+}
+
+void slide(AsyncWebServerRequest *request) {
+  if (request->hasParam("relay", true)) {
+    int r = request->getParam("relay", true)->value().toInt();
+    r -= C_RELAY_TOTAL;
+    slidingOut = request->getParam("dir", true)->value() == "true";
+    bool stop = request->getParam("stop", true)->value() == "true";
+    if (r >= 0) {
+      for (int i=0;i<W_RELAY_TOTAL;i++) {
+        if (relSets.relays[i].type == Relay_Direction)
+          digitalWrite(relayPins[i], slidingOut ? HIGH : LOW);
+        else if (relSets.relays[i].type == Relay_Slide) {
+          sliding[i] = false;
+          digitalWrite(relayPins[i],LOW);
+        }
+      }
+      if (!stop) {
+        slideStart[r] = millis();
+        sliding[r] = true;
+      }
+      sendSuccess(request);
+      return;
+    }
+  }
+  request->send(500, "text/plain", "Bogus");
 }
 
 void clrMaxDiff(AsyncWebServerRequest *request) {
@@ -428,7 +459,7 @@ void fillStatusDoc(JsonVariant root) {
       state = previousRelayState[i - C_RELAY_TOTAL];
       rp = &relSets.relays[i - C_RELAY_TOTAL];
     }
-    if (strlen(rp->name) == 0)
+    if (strlen(rp->name) == 0 || rp->type == Relay_Direction)
       continue;
     sprintf(dodad,"relayStatus%d",i);
     root[dodad] = state==HIGH?"ON":"OFF";
@@ -436,6 +467,12 @@ void fillStatusDoc(JsonVariant root) {
     root[dodad] = rp->name;
     sprintf(dodad,"relayOff%d",i);
     root[dodad] = rp->off ? "off" : "on";
+    sprintf(dodad,"relaySlide%d",i);
+    root[dodad] = rp->type == Relay_Slide;
+    if (rp->type == Relay_Slide && i >= C_RELAY_TOTAL && sliding[i - C_RELAY_TOTAL]) {
+      sprintf(dodad,"relaySliding%d",i);
+      root[dodad] = slidingOut ? "out" : "in";
+    }
   }
 
   root["packcurrent"] = st.lastMicroAmps/1000;
@@ -555,6 +592,8 @@ void saverelays(AsyncWebServerRequest *request) {
         case 'L':rp->type = Relay_Load;break;
         case 'C':rp->type = Relay_Charge; break;
         case 'T':rp->type = Relay_Therm; break;
+        case 'D':rp->type = Relay_Direction; break;
+        case 'S':rp->type = Relay_Slide; break;
       }
       rp->doSoC = type[1] == 'P';
       rp->fullChg = type[1] == 'F';
@@ -574,6 +613,8 @@ void saverelays(AsyncWebServerRequest *request) {
       rp->therm = type[0];
     }
   }
+  if (request->hasParam("slideSecs", true))
+    statSets.slideSecs = request->getParam("slideSecs", true)->value().toInt();
   writeRelaySet = true;
   BMSSend(&statSets);
 
@@ -705,6 +746,7 @@ void startServer() {
   server.on("/hideLastEventMsg", HTTP_GET, hideLastEventMsg);
   server.on("/saveemail", HTTP_POST, saveemail);
   server.on("/saveOff", HTTP_POST, saveOff);
+  server.on("/slide", HTTP_POST, slide);
   server.on("/fullChg", HTTP_POST, fullChg);
   server.on("/clrMaxDiff", HTTP_GET, clrMaxDiff);
   server.on("/dump", HTTP_POST, dump);
@@ -766,7 +808,11 @@ void checkStatus()
   for (int8_t y = 0; y < W_RELAY_TOTAL; y++)
   {
     RelaySettings *rp = &relSets.relays[y];
-    if (rp->off)
+    if (rp->type == Relay_Slide) {
+      if (sliding[y] && (millis() - slideStart[y]) > ((uint32_t)statSets.slideSecs * 1000))
+        sliding[y] = false;
+      relay[y] = sliding[y] ? HIGH : LOW;
+    } else if (rp->off)
       relay[y] = LOW;
     else {
       relay[y] = st.previousRelayState[y]; // don't change it because we might be in the SOC trip/rec area
@@ -901,8 +947,10 @@ void setup() {
   if (!readEE("disp",(uint8_t*)&dispSets,sizeof(dispSets)))
     dispSets.doCelsius = true;
 
-  for (int i=0;i<W_RELAY_TOTAL;i++)
+  for (int i=0;i<W_RELAY_TOTAL;i++) {
     pinMode(relayPins[i],OUTPUT);
+    sliding[i] = false;
+  }
   clearRelays();
   GenUUID();
 

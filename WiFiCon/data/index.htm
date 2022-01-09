@@ -28,7 +28,7 @@
             <div>
                 <div id="uptimew" class="stat rt"><div class="h">W Up Time</div><div class="v"></div></div>
                 <div id="uptimec" class="stat rt"><div class="h">C Up Time</div><div class="v"></div></div>
-                <div id="relayStatus" class="stat"><div class="h">J1</div><a href="" class="v"></a></div>
+                <div id="relayStatus" class="stat"><div class="h">J1</div><a href="" class="v"></a><span class="s"><a href="" class="i">In</a>&nbsp;<a href="" class="o">Out</a></span></div>
                 <div id="version" class="stat"></div>
                 <div class="stat lrg" id="timenow"></div>
                 <div id='nocontroller' class='stat error'>Controller is not responding</div>
@@ -99,6 +99,8 @@
                         <option value="CP">Charger %</option>
                         <option value="CF">Enable Full Charge</option>
                         <option value="T">Thermostat</option>
+                        <option value="D">Direction</option>
+                        <option value="S">Slide</option>
                     </select>
                     <span id="relayDoSoC">
                     <label for="relayTrip">Trip:</label>
@@ -110,6 +112,7 @@
                     <span id="relayDoTherm"><label for="relayTherm">Temp:</label>
                         <select id="relayTherm" name="relayTherm"><option value="b">Board Temp</option><option value="c">Cell Temp</option></select></span>
                                 </div>
+                <div><label for="slideSecs">Slide Secs:</label><input type="number" name="slideSecs" id="slideSecs" min="1" max="255"></div>
                 <div class="buttonhold"><input type="submit" value="Save Settings" /></div>
             </form>
         </div>

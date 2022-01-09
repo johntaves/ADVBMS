@@ -28,7 +28,7 @@ body {
     margin: .1em;
     min-width: 3em;
 }
-.stat .v,.t {
+.stat .v,.t,.i,.o {
     font-size: larger;
     font-weight: bold;
 }
