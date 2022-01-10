@@ -70,8 +70,8 @@ uint8_t txBuffer[sizeof(MaxData)]; // this is so that we do not mangle the data 
 void BMSSendRaw(uint8_t *d,uint16_t len) {
   if (!len) return;
   *d = CRC8(d+1,len-1);
-  if (((AMsg*)d)->cmd != Status)
-    printf("Sending: %d, %d, 0x%x\n",d[1],len,*d);
+/*  if (((AMsg*)d)->cmd != Status)
+    printf("Sending: %d, %d, 0x%x\n",d[1],len,*d);*/
   dataSer.send((byte*)d,len);
 }
 
