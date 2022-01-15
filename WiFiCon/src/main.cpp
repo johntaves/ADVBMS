@@ -850,7 +850,7 @@ void checkStatus()
           if (val < rp->trip) {
             relay[y] = HIGH;
             trimLastEventMsg();
-            snprintf(lastEventMsg,sizeof(lastEventMsg),"%s T%d %d,",lastEventMsg,val,minCell);
+            snprintf(lastEventMsg,sizeof(lastEventMsg),"%s H%d %d,",lastEventMsg,val,minCell);
           } else if (val > rp->rec)
             relay[y] = LOW;
           break;

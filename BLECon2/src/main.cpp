@@ -153,6 +153,7 @@ class MyClientCallback : public NimBLEClientCallbacks {
   }
   void onConnect(NimBLEClient* pclient) {
     st.cells[cell].conn = true;
+    st.cells[cell].volts = 0;
     cells[cell].cellSentSet = false;
     SettingMsg ms;
     ms.cmd = ConnCell;
@@ -341,10 +342,10 @@ void checkStatus()
   uint16_t totalVolts=0;
   for (int8_t i = 0; i < dynSets.nCells; i++)
   {
-    if (!st.cells[i].conn && doShutOffNoStatus(cells[i].cellLast)) {
+    if ((!st.cells[i].conn || !st.cells[i].volts) && doShutOffNoStatus(cells[i].cellLast)) {
       clearRelays();
       if (!cellsOverDue)
-        SendEvent(CellsDisc,st.lastMicroAmps,0,i);
+        SendEvent(CellsOverDue,st.lastMicroAmps,0,i);
       cellsOverDue = true;
       break;
     }
@@ -353,7 +354,7 @@ void checkStatus()
       buf[0] = 0;
       uint32_t ct = millis();
       for (int j=0;j<dynSets.nCells;j++)
-        snprintf(buf,sizeof(buf),"%s #%d %u\n",buf,j,ct - cells[j].cellLast);
+        snprintf(buf,sizeof(buf),"%s #%d %uT\n",buf,j,ct - cells[j].cellLast);
       BMSSend(buf);
     }
       
