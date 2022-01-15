@@ -71,6 +71,8 @@ struct StrMsg {
 #define RELAY_TOTAL (C_RELAY_TOTAL + W_RELAY_TOTAL)
 #define MAX_CELLS 8
 #define CHECKSTATUS 2000
+// shut everything off if status has not happened within 2 secs of when it should
+#define WATCHDOGSLOP 2000
 
 enum {
   Relay_Connect,Relay_Load,Relay_Charge,Relay_Therm,Relay_Direction,Relay_Slide

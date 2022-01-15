@@ -26,6 +26,7 @@ uint32_t statusMS=0;
 HTTPClient http;
 atomic_flag taskRunning(0);
 bool OTAInProg = false;
+Ticker watchDog;
 
 BMSStatus st;
 
@@ -110,6 +111,11 @@ void clearRelays() {
     digitalWrite(relayPins[i], LOW);
     previousRelayState[i] = LOW;
   }
+}
+
+void doWatchDog() {
+  clearRelays();
+  st.watchDogHits++;
 }
 
 void emailCallback(SendStatus msg) {
@@ -865,6 +871,7 @@ void checkStatus()
       previousRelayState[n] = relay[n];
     }
   }
+  watchDog.once_ms(CHECKSTATUS+WATCHDOGSLOP,doWatchDog);
 }
 
 void MsgEvent(EventMsg *mp) {

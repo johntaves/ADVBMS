@@ -11,8 +11,6 @@
 
 // poll the PV current every 2 secs
 #define POLLPV 2000
-// shut everything off if status has not happened within 2 secs of when it should
-#define WATCHDOGSLOP 2000
 // attempt to connect to cells
 #define CHECKCONNECT 1000
 
