@@ -835,19 +835,23 @@ void checkStatus()
           // else leave it as-is
           break;
         case Relay_Therm:
-          uint8_t val=255;
+          uint8_t val=255;int minCell = MAX_CELLS;
           switch (rp->therm) {
             case 'b': val = st.curBoardTemp;
               break;
             case 'c':
               for (int i=0;i<dynSets.nCells;i++)
-                if (st.cells[i].exTemp < val && st.cells[i].conn)
+                if (st.cells[i].exTemp < val && st.cells[i].conn) {
                   val = st.cells[i].exTemp;
+                  minCell = i;
+                }
               break;
           }
-          if (val < rp->trip)
+          if (val < rp->trip) {
             relay[y] = HIGH;
-          else if (val > rp->rec)
+            trimLastEventMsg();
+            snprintf(lastEventMsg,sizeof(lastEventMsg),"%s T%d %d,",lastEventMsg,val,minCell);
+          } else if (val > rp->rec)
             relay[y] = LOW;
           break;
       }
