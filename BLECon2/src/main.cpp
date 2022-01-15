@@ -318,7 +318,7 @@ void checkStatus()
   if (dynSets.cellSets.delay)
     delay(dynSets.cellSets.delay);
   uint16_t vp;
-  st.curBoardTemp = BMSReadTemp(TEMP1,statSets.bdVolts,BCOEF,47000,47000,dynSets.cellSets.cnt,&vp);
+  st.curBoardTemp = BMSReadTemp(TEMP1,true,statSets.bdVolts,BCOEF,47000,47000,dynSets.cellSets.cnt,&vp);
   if (!dynSets.cellSets.resPwrOn)
     digitalWrite(RESISTOR_PWR,LOW);
   if ((st.lastMicroAmps > 0 && chgOff) || (st.lastMicroAmps < 0 && loadsOff)) {

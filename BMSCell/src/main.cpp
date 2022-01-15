@@ -96,8 +96,8 @@ void readData() {
   while ((millis() - ct) < cellSett.delay) ; // We don't want a vtaskdelay, because that will shut down things
 
   cs.volts=(uint16_t)(BMSReadVoltage(VADC,cellSett.cnt)*(V_RES_BOT+V_RES_TOP)/V_RES_BOT);
-  cs.tempExt = BMSReadTemp(TExADC,cs.volts,BCOEF,47000,51000,cellSett.cnt);
-  cs.tempBd = BMSReadTemp(TBdADC,cs.volts,BCOEF,47000,51000,cellSett.cnt);
+  cs.tempExt = BMSReadTemp(TExADC,false,cs.volts,BCOEF,47000,51000,cellSett.cnt);
+  cs.tempBd = BMSReadTemp(TBdADC,false,cs.volts,BCOEF,47000,51000,cellSett.cnt);
   if (!cellSett.resPwrOn) {
     gpio_set_level(TEMPPWR,LOW);
     gpio_set_level(BATTV,LOW);

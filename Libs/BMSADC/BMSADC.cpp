@@ -23,10 +23,13 @@ uint32_t BMSReadVoltage(adc1_channel_t readPin,uint32_t cnt) {
   return av / cnt;
 }
 
-int16_t BMSReadTemp(adc1_channel_t tPin,uint16_t Vs,int bCoef,uint32_t Ro,uint32_t R1,uint8_t cnt,uint16_t* vp=NULL) {
-  uint16_t Vout = BMSReadVoltage(tPin,cnt);
+int16_t BMSReadTemp(adc1_channel_t tPin,bool highside, uint32_t Vs,int bCoef
+        ,uint32_t Ro,uint32_t R1,uint8_t cnt,uint16_t* vp=NULL) {
+  uint32_t Vout = BMSReadVoltage(tPin,cnt);
   if (vp) *vp = Vout;
-  double Rt = (double)R1 * (double)Vout / ((double)Vs - (double)Vout);
+  uint32_t Rt;
+  if (highside) Rt = (R1 * (Vs - Vout))/Vout;
+  else Rt = R1 * Vout / (Vs - Vout);
   double T = 1/(1/298.15d + log(Rt/(double)Ro)/(double)bCoef);
 
   return (int16_t)(T-273.15);
