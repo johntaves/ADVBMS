@@ -841,7 +841,7 @@ void checkStatus()
               break;
             case 'c':
               for (int i=0;i<dynSets.nCells;i++)
-                if (st.cells[i].exTemp < val && st.cells[i].conn) {
+                if (st.cells[i].exTemp < val && st.cells[i].conn && st.cells[i].volts) {
                   val = st.cells[i].exTemp;
                   minCell = i;
                 }
