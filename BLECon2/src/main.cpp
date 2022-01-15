@@ -81,8 +81,8 @@ void getAmps() {
   }
 }
 
-bool doShutOffNoStatus(uint32_t t) {
-  return ((uint32_t)statSets.CellsOutTime < ((millis() - t)*1000) || !st.stateOfChargeValid || st.stateOfCharge < statSets.CellsOutMin || st.stateOfCharge > statSets.CellsOutMax);
+bool doShutOffNoStatus() {
+  return !st.stateOfChargeValid || st.stateOfCharge < statSets.CellsOutMin || st.stateOfCharge > statSets.CellsOutMax;
 }
 
 void clearRelays() {
@@ -115,10 +115,8 @@ void SendEvent(uint8_t cmd,uint32_t amps=0, uint16_t val=0,int cell=0) {
 }
 
 void doWatchDog() {
-  if (doShutOffNoStatus(statusMS)) {
-    clearRelays();
-    SendEvent(WatchDog);
-  }
+  clearRelays();
+  SendEvent(WatchDog);
   st.watchDogHits++;
 }
 
@@ -259,7 +257,7 @@ void checkMissingCell() {
 void CheckBLEScan() {
   if ((dynSets.nCells > cellBLE.numCells || missingCell) && !scanStart && dynSets.nCells) {
     Serial.println("Starting scan");
-    if (doShutOffNoStatus(3000))
+    if (doShutOffNoStatus())
       clearRelays();
     pBLEScan->start(0,NULL,false);
     scanStart = millis();
@@ -338,25 +336,19 @@ void checkStatus()
   bool allovervoltrec = true,allundervoltrec = true,hitTop=false,hitUnder=false;
   bool allovertemprec = true,allundertemprec = true;
   //Loop through cells
-  cellsOverDue = false;
   uint16_t totalVolts=0;
+  int nCellsAlive = 0;
   for (int8_t i = 0; i < dynSets.nCells; i++)
   {
-    if ((!st.cells[i].conn || !st.cells[i].volts) && doShutOffNoStatus(cells[i].cellLast)) {
-      clearRelays();
-      if (!cellsOverDue)
+    if (!st.cells[i].conn || !st.cells[i].volts || (millis() - cells[i].cellLast) > (5*dynSets.cellSets.time)) {
+      if (!cellsOverDue) {
+        clearRelays();
         SendEvent(CellsOverDue,st.lastMicroAmps,0,i);
+      }
       cellsOverDue = true;
       break;
     }
-    if ((millis() - cells[i].cellLast) > (5*dynSets.cellSets.time)) {
-      char buf[256];
-      buf[0] = 0;
-      uint32_t ct = millis();
-      for (int j=0;j<dynSets.nCells;j++)
-        snprintf(buf,sizeof(buf),"%s #%d %uT\n",buf,j,ct - cells[j].cellLast);
-      BMSSend(buf);
-    }
+    nCellsAlive++;
       
     uint16_t cellV = st.cells[i].volts;
     totalVolts += cellV;
@@ -403,6 +395,8 @@ void checkStatus()
         allundertemprec = false;
     }
   }
+  if (nCellsAlive == dynSets.nCells)
+    cellsOverDue = false;
   uint16_t diffVolts = totalVolts > st.lastPackMilliVolts? totalVolts - st.lastPackMilliVolts: st.lastPackMilliVolts - totalVolts;
   if (diffVolts > st.maxDiffMilliVolts)
     st.maxDiffMilliVolts = diffVolts;
@@ -547,10 +541,7 @@ void checkStatus()
   if (hitTop) {
     
   }
-  if (!cellsOverDue) {
-    st.watchDogHits = 0;
-    watchDog.once_ms(CHECKSTATUS+WATCHDOGSLOP,doWatchDog);
-  }
+  watchDog.once_ms(CHECKSTATUS+WATCHDOGSLOP,doWatchDog);
   BMSSend(&st);
 }
 
