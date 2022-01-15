@@ -180,6 +180,7 @@ class MyClientCallback : public NimBLEClientCallbacks {
 
   void onDisconnect(NimBLEClient* pclient) {
     st.cells[cell].conn = false;
+    st.cells[cell].volts = 0;
     SettingMsg ms;
     ms.cmd = DiscCell;
     ms.val = cell;
@@ -539,7 +540,7 @@ void checkStatus()
               break;
             case 'c':
               for (int i=0;i<dynSets.nCells;i++)
-                if (st.cells[i].exTemp < val && st.cells[i].conn)
+                if (st.cells[i].exTemp < val && st.cells[i].conn && st.cells[i].volts)
                   val = st.cells[i].exTemp;
               break;
           }

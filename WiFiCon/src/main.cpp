@@ -845,7 +845,6 @@ void checkStatus()
                   val = st.cells[i].exTemp;
               break;
           }
-          Serial.printf("val: %d %s %d\n",val, st.cells[0].conn?"T":"F",st.cells[0].exTemp);
           if (val < rp->trip)
             relay[y] = HIGH;
           else if (val > rp->rec)
