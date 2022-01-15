@@ -157,6 +157,7 @@ void BMSSend(T* m) {
   BMSSendRaw((uint8_t*)m,sizeof(T));
 }
 
+extern void BMSInitStatus(BMSStatus *sp);
 extern bool readEE(const char* name,uint8_t *p,size_t s);
 extern void writeEE(const char* name,uint8_t *p,size_t s);
 extern void InitRelays(RelaySettings* rp,int num);

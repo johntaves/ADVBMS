@@ -928,7 +928,7 @@ void setup() {
   WiFi.onEvent(onconnect, WiFiEvent_t::SYSTEM_EVENT_STA_GOT_IP);
   WiFiInit();
   InitOTA();
-
+  BMSInitStatus(&st);
   if (!readEE("comm",(uint8_t*)&commSets,sizeof(commSets))) {
     commSets.email[0] = 0;
     commSets.senderEmail[0] = 0;
