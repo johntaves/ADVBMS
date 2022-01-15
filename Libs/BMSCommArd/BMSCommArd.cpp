@@ -67,6 +67,30 @@ void InitRelays(RelaySettings* rp,int num) {
 
 uint8_t txBuffer[sizeof(MaxData)]; // this is so that we do not mangle the data sent to BMSSendRaw
 
+void BMSInitStatus(BMSStatus *sp) {
+  sp->cmd = Status;
+  sp->lastMillis = 0;
+  sp->milliRolls = 0;
+  sp->watchDogHits = 0;
+  sp->lastPackMilliVolts = 0xffff;
+  sp->maxDiffMilliVolts = 0;
+  sp->lastPVMicroAmps=0;
+  sp->doFullChg = true;
+  sp->maxCellVState=false;sp->minCellVState=false;
+  sp->maxPackVState=false;sp->minPackVState=false;
+  sp->maxCellCState=false;sp->minCellCState=false;
+  sp->maxPackCState=false;sp->minPackCState=false;
+  sp->maxChargePctState=false;
+  sp->lastAdjMillAmpHrs = 0;
+  sp->BatAHMeasured = 0;
+  for (int i=0;i<C_RELAY_TOTAL;i++)
+    sp->previousRelayState[i] = LOW;
+  for (int i=0;i<MAX_CELLS;i++) {
+    sp->cells[i].volts = 0;
+    sp->cells[i].conn = false;
+  }
+}
+
 void BMSSendRaw(uint8_t *d,uint16_t len) {
   if (!len) return;
   *d = CRC8(d+1,len-1);

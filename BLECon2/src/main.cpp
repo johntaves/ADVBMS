@@ -63,24 +63,6 @@ int lastTrip;
 
 //char (*__kaboom)[sizeof( BMSStatus )] = 1;
 
-void initState() {
-  st.cmd = Status;
-  st.lastMillis = 0;
-  st.milliRolls = 0;
-  st.watchDogHits = 0;
-  st.lastPackMilliVolts = 0xffff;
-  st.maxDiffMilliVolts = 0;
-  st.lastPVMicroAmps=0;
-  st.doFullChg = true;
-  st.maxCellVState=false;st.minCellVState=false;
-  st.maxPackVState=false;st.minPackVState=false;
-  st.maxCellCState=false;st.minCellCState=false;
-  st.maxPackCState=false;st.minPackCState=false;
-  st.maxChargePctState=false;
-  st.lastAdjMillAmpHrs = 0;
-  st.BatAHMeasured = 0;
-}
-
 void getAmps() {
   st.lastMicroAmps = -INA.getBusMicroAmps(0);
 
@@ -817,7 +799,7 @@ void setup() {
   for (int i=0;i<C_RELAY_TOTAL;i++)
     pinMode(relayPins[i],OUTPUT);
   clearRelays();
-  initState();
+  BMSInitStatus(&st);
   INA.begin(dynSets.MaxAmps, dynSets.ShuntUOhms);
   Serial.printf("INA D: %s %s\n",INA.getDeviceName(0),
             INA.getDeviceName(1));
