@@ -821,7 +821,7 @@ void checkStatus()
     } else if (rp->off)
       relay[y] = LOW;
     else {
-      relay[y] = st.previousRelayState[y]; // don't change it because we might be in the SOC trip/rec area
+      relay[y] = previousRelayState[y]; // don't change it because we might be in the SOC trip/rec area
       switch (rp->type) {
         default: case Relay_Connect: relay[y] = LOW; break; // don't put this on this CPU
         case Relay_Load:
@@ -853,12 +853,14 @@ void checkStatus()
                 }
               break;
           }
-          if (val < rp->trip) {
+          if (val < rp->trip)
             relay[y] = HIGH;
-            trimLastEventMsg();
-            snprintf(lastEventMsg,sizeof(lastEventMsg),"%s H%d %d,",lastEventMsg,val,minCell);
-          } else if (val > rp->rec)
+          else if (val > rp->rec)
             relay[y] = LOW;
+          if (previousRelayState[y] != relay[y]) {
+            trimLastEventMsg();
+            snprintf(lastEventMsg,sizeof(lastEventMsg),"%s H%d %d %d %d,",lastEventMsg,val,minCell,rp->rec,rp->trip);
+          }
           break;
       }
     }
