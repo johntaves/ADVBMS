@@ -910,7 +910,7 @@ void WonSerData(const AMsg *mp)
       checkStatus();
       break;  
   }
-  digitalWrite(GREEN_LED,0);
+  digitalWrite(BLUE_LED,0);
 }
 
 void xSendStatus(void* unused) {
@@ -920,8 +920,9 @@ void xSendStatus(void* unused) {
 
 void setup() {
   Serial.begin(9600);
-  pinMode(GREEN_LED, OUTPUT);
-  digitalWrite(GREEN_LED,1);
+  Serial.println("Alive");
+  pinMode(BLUE_LED, OUTPUT);
+  digitalWrite(BLUE_LED,1);
   BMSInitCom(&WonSerData);
   Wire.begin();
   if(!SPIFFS.begin()){
@@ -974,7 +975,7 @@ void setup() {
   msg.cmd = DynQuery;
   BMSWaitFor(&msg,DynSets);
 
-  digitalWrite(GREEN_LED,0);
+  digitalWrite(BLUE_LED,0);
 }
 
 void loop() {

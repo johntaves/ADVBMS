@@ -3,7 +3,7 @@
 #ifndef JTBMS_DEFINES_H_
 #define JTBMS_DEFINES_H_
 
-#define GREEN_LED GPIO_NUM_23
+#define BLUE_LED GPIO_NUM_23
 
 #define LAST_EVT_MSG_CNT 5
 
