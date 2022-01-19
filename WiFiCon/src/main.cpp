@@ -47,6 +47,7 @@ SMTPData smtpData;
 uint8_t previousRelayState[W_RELAY_TOTAL];
 uint32_t slideStart[W_RELAY_TOTAL];
 bool sliding[W_RELAY_TOTAL],slidingOut;
+int dirRelay;
 String emailRes = "";
 
 uint8_t milliRolls=0;
@@ -271,6 +272,7 @@ void relays(AsyncWebServerRequest *request){
       case Relay_Therm: rule1["type"] = "T";break;
       case Relay_Slide: rule1["type"] = "S"; break;
       case Relay_Direction: rule1["type"] = "D"; break;
+      case Relay_Unused: rule1["type"] = "U"; break;
     }
     
     rule1["trip"] = rp->trip;
@@ -352,15 +354,14 @@ void slide(AsyncWebServerRequest *request) {
     r -= C_RELAY_TOTAL;
     slidingOut = request->getParam("dir", true)->value() == "true";
     bool stop = request->getParam("stop", true)->value() == "true";
-    if (r >= 0) {
-      for (int i=0;i<W_RELAY_TOTAL;i++) {
-        if (relSets.relays[i].type == Relay_Direction)
-          digitalWrite(relayPins[i], slidingOut ? HIGH : LOW);
-        else if (relSets.relays[i].type == Relay_Slide) {
-          sliding[i] = false;
-          digitalWrite(relayPins[i],LOW);
-        }
+    for (int i=0;i<W_RELAY_TOTAL;i++) {
+      if (relSets.relays[i].type == Relay_Slide) {
+        sliding[i] = false;
+        digitalWrite(relayPins[i],LOW);
       }
+    }
+    if (r >= 0 && dirRelay >= 0) {
+      digitalWrite(relayPins[dirRelay],LOW);
       if (!stop) {
         slideStart[r] = millis();
         sliding[r] = true;
@@ -475,10 +476,8 @@ void fillStatusDoc(JsonVariant root) {
     root[dodad] = rp->off ? "off" : "on";
     sprintf(dodad,"relaySlide%d",i);
     root[dodad] = rp->type == Relay_Slide;
-    if (rp->type == Relay_Slide && i >= C_RELAY_TOTAL && sliding[i - C_RELAY_TOTAL]) {
-      sprintf(dodad,"relaySliding%d",i);
+    if (rp->type == Relay_Slide && i >= C_RELAY_TOTAL && sliding[i - C_RELAY_TOTAL])
       root[dodad] = slidingOut ? "out" : "in";
-    }
   }
 
   root["packcurrent"] = st.lastMicroAmps/1000;
@@ -577,6 +576,7 @@ void savelimits(AsyncWebServerRequest *request) {
 }
 
 void saverelays(AsyncWebServerRequest *request) {
+  dirRelay = -1;
   for (int relay=0;relay<RELAY_TOTAL;relay++) {
     char name[16],type[3];
     RelaySettings *rp;
@@ -598,7 +598,13 @@ void saverelays(AsyncWebServerRequest *request) {
         case 'L':rp->type = Relay_Load;break;
         case 'C':rp->type = Relay_Charge; break;
         case 'T':rp->type = Relay_Therm; break;
-        case 'D':rp->type = Relay_Direction; break;
+        case 'D':
+          if (dirRelay == -1) {
+            rp->type = Relay_Direction;
+            dirRelay = relay - C_RELAY_TOTAL;
+          } else 
+            rp->type = Relay_Unused;
+          break;
         case 'S':rp->type = Relay_Slide; break;
       }
       rp->doSoC = type[1] == 'P';
@@ -814,14 +820,26 @@ void checkStatus()
   for (int8_t y = 0; y < W_RELAY_TOTAL; y++)
   {
     RelaySettings *rp = &relSets.relays[y];
+    relay[y] = previousRelayState[y]; // don't change it because we might be in the SOC trip/rec area
     if (rp->type == Relay_Slide) {
-      if (sliding[y] && (millis() - slideStart[y]) > ((uint32_t)statSets.slideSecs * 1000))
-        sliding[y] = false;
-      relay[y] = sliding[y] ? HIGH : LOW;
-    } else if (rp->off)
+      if (dirRelay >= 0 && sliding[y]) {
+        if ((millis() - slideStart[y]) > ((uint32_t)statSets.slideSecs * 1000)) {
+          sliding[y] = false;
+          relay[y] = LOW;
+          relay[dirRelay] = LOW;
+        } else {
+          relay[dirRelay] = slidingOut ? LOW : HIGH;
+          relay[y] = HIGH;
+        }
+      } else
+        relay[y] = LOW;
+      continue;
+    }
+    if (rp->type == Relay_Direction) 
+      continue;
+    if (rp->off)
       relay[y] = LOW;
     else {
-      relay[y] = previousRelayState[y]; // don't change it because we might be in the SOC trip/rec area
       switch (rp->type) {
         default: case Relay_Connect: relay[y] = LOW; break; // don't put this on this CPU
         case Relay_Load:
@@ -957,6 +975,13 @@ void setup() {
 
   if (!readEE("relay",(uint8_t*)&relSets,sizeof(relSets)))
     InitRelays(&relSets.relays[0],W_RELAY_TOTAL);
+  dirRelay = -1;
+  for (int i=0;i<W_RELAY_TOTAL;i++)
+    if (relSets.relays[i].type == Relay_Direction) {
+      if (dirRelay >= 0)
+        relSets.relays[i].type = Relay_Unused;
+      else dirRelay = i;
+    }
 
   if (!readEE("disp",(uint8_t*)&dispSets,sizeof(dispSets)))
     dispSets.doCelsius = true;

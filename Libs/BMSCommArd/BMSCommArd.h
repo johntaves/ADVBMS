@@ -75,7 +75,7 @@ struct StrMsg {
 #define WATCHDOGSLOP 2000
 
 enum {
-  Relay_Connect,Relay_Load,Relay_Charge,Relay_Therm,Relay_Direction,Relay_Slide
+  Relay_Connect,Relay_Load,Relay_Charge,Relay_Therm,Relay_Direction,Relay_Slide,Relay_Unused
 };
 
 struct Cells {

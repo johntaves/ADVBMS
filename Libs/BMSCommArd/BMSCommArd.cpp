@@ -60,7 +60,7 @@ void InitRelays(RelaySettings* rp,int num) {
       r->fullChg = false;
       r->rec = 0;
       r->trip = 0;
-      r->type = 0;
+      r->type = Relay_Unused;
       r->therm = 'b';
   }
 }

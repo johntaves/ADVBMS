@@ -488,12 +488,14 @@ void checkStatus()
   for (int8_t y = 0; y < C_RELAY_TOTAL; y++)
   {
     RelaySettings *rp = &statSets.relays[y];
+    relay[y] = st.previousRelayState[y]; // don't change it because we might be in the SOC trip/rec area
     if (rp->off)
       relay[y] = LOW;
-    else {
-      relay[y] = st.previousRelayState[y]; // don't change it because we might be in the SOC trip/rec area
+    else
       switch (rp->type) {
-        default: case Relay_Connect: relay[y] = cellsOverDue || (wasLoadsOff && loadsOff && st.lastMicroAmps < 0) || (wasChgOff && chgOff && st.lastMicroAmps > 0)?LOW:HIGH; break;
+        default:
+          break;
+        case Relay_Connect: relay[y] = cellsOverDue || (wasLoadsOff && loadsOff && st.lastMicroAmps < 0) || (wasChgOff && chgOff && st.lastMicroAmps > 0)?LOW:HIGH; break;
         case Relay_Load:
           if (isFromOff(rp))
             relay[y] = HIGH;
@@ -527,7 +529,6 @@ void checkStatus()
             relay[y] = LOW;
           break;
       }
-    }
   }
   for (int8_t n = 0; n < C_RELAY_TOTAL; n++)
   {
