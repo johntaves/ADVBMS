@@ -374,9 +374,9 @@ function queryBMS() {
                     $("#relayStatus"+i+" .s").show();
                     $("#relayStatus"+i+" .i").removeClass("manoff");
                     $("#relayStatus"+i+" .o").removeClass("manoff");
-                    if (data["relaySliding"+i] == "out")
+                    if (data["relaySlide"+i] == "out")
                         $("#relayStatus"+i+" .o").addClass("manoff");
-                    else if (data["relaySliding"+i] == "in")
+                    else if (data["relaySlide"+i] == "in")
                         $("#relayStatus"+i+" .i").addClass("manoff");
                 } else {
                     $("#relayStatus"+i+" .v").html(data["relayStatus"+i]).show();
