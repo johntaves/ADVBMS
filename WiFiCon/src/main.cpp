@@ -598,6 +598,7 @@ void saverelays(AsyncWebServerRequest *request) {
         case 'L':rp->type = Relay_Load;break;
         case 'C':rp->type = Relay_Charge; break;
         case 'T':rp->type = Relay_Therm; break;
+        case 'U':rp->type = Relay_Unused; break;
         case 'D':
           if (dirRelay == -1) {
             rp->type = Relay_Direction;
