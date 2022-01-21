@@ -598,14 +598,22 @@ function setupRelays(rt) {
          theA.click(function () {
              var r = $(this).attr("relay");
              $.ajax({
-                 type: "POST",
-                 url: "/slide",
-                 data: { relay: r, dir:$(this).hasClass("o"), stop: $(this).hasClass("manoff")},
-                 dataType:'json',
-                 error: function (data) {
-                     $("#saveerror").show().delay(2000).fadeOut(500);
-                 }
-             });
+                type: "POST",
+                url: "/slide",
+                data: { relay: r, dir:$(this).hasClass("o"), stop: $(this).hasClass("manoff")},
+                dataType: 'json',
+                success: function (data) {
+                    $("#relayStatus"+r+" .o").removeClass("manoff");
+                    $("#relayStatus"+r+" .i").removeClass("manoff");
+                    if (data.status == "out")
+                        $("#relayStatus"+r+" .o").addClass("manoff");
+                    else if (data.status == "in")
+                        $("#relayStatus"+r+" .i").addClass("manoff");
+
+                },
+                fail: function (data) {
+                    $("#saveerror").show().delay(2000).fadeOut(500);
+                }});
              return false;
           });
          temp.insertBefore("#relayStatus");

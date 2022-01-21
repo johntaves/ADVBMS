@@ -349,6 +349,10 @@ void saveOff(AsyncWebServerRequest *request) {
 }
 
 void slide(AsyncWebServerRequest *request) {
+  AsyncResponseStream *response =
+      request->beginResponseStream("application/json");
+  DynamicJsonDocument doc(8192);
+  JsonObject root = doc.to<JsonObject>();
   if (request->hasParam("relay", true)) {
     int r = request->getParam("relay", true)->value().toInt();
     r -= C_RELAY_TOTAL;
@@ -358,19 +362,24 @@ void slide(AsyncWebServerRequest *request) {
       if (relSets.relays[i].type == Relay_Slide) {
         sliding[i] = false;
         digitalWrite(relayPins[i],LOW);
+        previousRelayState[i] = LOW;
       }
     }
     if (r >= 0 && dirRelay >= 0) {
       digitalWrite(relayPins[dirRelay],LOW);
+      previousRelayState[dirRelay] = LOW;
       if (!stop) {
         slideStart[r] = millis();
         sliding[r] = true;
       }
-      sendSuccess(request);
+      root["status"] = stop ? "stop" : (slidingOut ? "out" : "in");
+
+      serializeJson(doc, *response);
+      request->send(response);
       return;
     }
   }
-  request->send(500, "text/plain", "Bogus");
+  request->send(500, "text/plain", "Bogus, is there a direction relay?");
 }
 
 void clrMaxDiff(AsyncWebServerRequest *request) {
