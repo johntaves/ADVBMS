@@ -121,7 +121,7 @@ struct StatSetts {
   bool useCellC,useBoardTemp;
   uint16_t limits[2][2][2][2],FloatV,ChargeRate,bdVolts;
   RelaySettings relays[C_RELAY_TOTAL];
-  uint8_t ChargePct,ChargePctRec,CellsOutMin,CellsOutMax,CellsOutTime,slideSecs;
+  uint8_t ChargePct,ChargePctRec,CellsOutMin,CellsOutMax,CellsOutTime,slideMS;
 };
 
 struct DynSetts {

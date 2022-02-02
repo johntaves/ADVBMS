@@ -26,7 +26,7 @@ uint32_t statusMS=0;
 HTTPClient http;
 atomic_flag taskRunning(0);
 bool OTAInProg = false;
-Ticker watchDog;
+Ticker watchDog,slider;
 
 BMSStatus st;
 
@@ -45,9 +45,11 @@ bool sendEmail = false,inAlertState = true;
 AsyncWebServer server(80);
 SMTPData smtpData;
 uint8_t previousRelayState[W_RELAY_TOTAL];
-uint32_t slideStart[W_RELAY_TOTAL];
-bool sliding[W_RELAY_TOTAL],slidingOut;
-int dirRelay;
+
+uint32_t slideStart;
+int32_t slidePos[W_RELAY_TOTAL];
+bool slidingOut;
+int dirRelayPin,sliding = -1;
 String emailRes = "";
 
 uint8_t milliRolls=0;
@@ -256,7 +258,7 @@ void relays(AsyncWebServerRequest *request){
   DynamicJsonDocument doc(8192);
   JsonObject root = doc.to<JsonObject>();
   root["notRecd"] = notRecd;
-  root["slideSecs"]=statSets.slideSecs;
+  root["slideMS"]=statSets.slideMS;
   JsonArray rsArray = root.createNestedArray("relaySettings");
   for (uint8_t r = 0; r < RELAY_TOTAL; r++) {
     JsonObject rule1 = rsArray.createNestedObject();
@@ -348,29 +350,40 @@ void saveOff(AsyncWebServerRequest *request) {
   } else request->send(500, "text/plain", "Missing parameters");
 }
 
+void stopSlide() {
+  if (sliding < 0) return;
+  digitalWrite(relayPins[sliding],LOW);
+  uint32_t diff = millis() - slideStart;
+  if (slidingOut) slidePos[sliding] += diff;
+  else slidePos[sliding] -= diff;
+  sliding = -1;
+  slider.detach();
+  if (dirRelayPin)
+    digitalWrite(dirRelayPin,LOW);
+}
+
 void slide(AsyncWebServerRequest *request) {
   AsyncResponseStream *response =
       request->beginResponseStream("application/json");
   DynamicJsonDocument doc(8192);
   JsonObject root = doc.to<JsonObject>();
+  stopSlide();
   if (request->hasParam("relay", true)) {
     int r = request->getParam("relay", true)->value().toInt();
     r -= C_RELAY_TOTAL;
     slidingOut = request->getParam("dir", true)->value() == "true";
     bool stop = request->getParam("stop", true)->value() == "true";
-    for (int i=0;i<W_RELAY_TOTAL;i++) {
-      if (relSets.relays[i].type == Relay_Slide) {
-        sliding[i] = false;
-        digitalWrite(relayPins[i],LOW);
-        previousRelayState[i] = LOW;
-      }
-    }
-    if (r >= 0 && dirRelay >= 0) {
-      digitalWrite(relayPins[dirRelay],LOW);
-      previousRelayState[dirRelay] = LOW;
+
+    if (r >= 0 && dirRelayPin) {
       if (!stop) {
-        slideStart[r] = millis();
-        sliding[r] = true;
+        uint32_t rem = statSets.slideMS - slidePos[r];
+        if (rem <= statSets.slideMS) {
+          slideStart = millis();
+          sliding = r;
+          digitalWrite(relayPins[r],HIGH);
+          digitalWrite(dirRelayPin,slidingOut ? LOW : HIGH);
+          slider.once_ms(rem,stopSlide);
+        }
       }
       root["status"] = stop ? "stop" : (slidingOut ? "out" : "in");
 
@@ -609,13 +622,17 @@ void saverelays(AsyncWebServerRequest *request) {
         case 'T':rp->type = Relay_Therm; break;
         case 'U':rp->type = Relay_Unused; break;
         case 'D':
+          stopSlide();
           if (dirRelay == -1) {
             rp->type = Relay_Direction;
             dirRelay = relay - C_RELAY_TOTAL;
           } else 
             rp->type = Relay_Unused;
           break;
-        case 'S':rp->type = Relay_Slide; break;
+        case 'S':
+          stopSlide();
+          rp->type = Relay_Slide;
+          break;
       }
       rp->doSoC = type[1] == 'P';
       rp->fullChg = type[1] == 'F';
@@ -635,8 +652,8 @@ void saverelays(AsyncWebServerRequest *request) {
       rp->therm = type[0];
     }
   }
-  if (request->hasParam("slideSecs", true))
-    statSets.slideSecs = request->getParam("slideSecs", true)->value().toInt();
+  if (request->hasParam("slideMS", true))
+    statSets.slideMS = request->getParam("slideMS", true)->value().toInt();
   writeRelaySet = true;
   BMSSend(&statSets);
 
@@ -831,21 +848,7 @@ void checkStatus()
   {
     RelaySettings *rp = &relSets.relays[y];
     relay[y] = previousRelayState[y]; // don't change it because we might be in the SOC trip/rec area
-    if (rp->type == Relay_Slide) {
-      if (dirRelay >= 0 && sliding[y]) {
-        if ((millis() - slideStart[y]) > ((uint32_t)statSets.slideSecs * 1000)) {
-          sliding[y] = false;
-          relay[y] = LOW;
-          relay[dirRelay] = LOW;
-        } else {
-          relay[dirRelay] = slidingOut ? LOW : HIGH;
-          relay[y] = HIGH;
-        }
-      } else
-        relay[y] = LOW;
-      continue;
-    }
-    if (rp->type == Relay_Direction) 
+    if (rp->type == Relay_Direction || rp->type == Relay_Slide) 
       continue;
     if (rp->off)
       relay[y] = LOW;
@@ -896,7 +899,7 @@ void checkStatus()
   for (int8_t n = 0; n < W_RELAY_TOTAL; n++)
   {
     if (previousRelayState[n] != relay[n])
-    {
+    { // no effect on slide and dir, because previous was set above to match
       digitalWrite(relayPins[n], relay[n]);
       previousRelayState[n] = relay[n];
     }
@@ -986,20 +989,20 @@ void setup() {
   if (!readEE("relay",(uint8_t*)&relSets,sizeof(relSets)))
     InitRelays(&relSets.relays[0],W_RELAY_TOTAL);
   dirRelay = -1;
-  for (int i=0;i<W_RELAY_TOTAL;i++)
+  for (int i=0;i<W_RELAY_TOTAL;i++) {
+    slidePos[i] = -1;
     if (relSets.relays[i].type == Relay_Direction) {
       if (dirRelay >= 0)
         relSets.relays[i].type = Relay_Unused;
       else dirRelay = i;
     }
+  }
 
   if (!readEE("disp",(uint8_t*)&dispSets,sizeof(dispSets)))
     dispSets.doCelsius = true;
 
-  for (int i=0;i<W_RELAY_TOTAL;i++) {
+  for (int i=0;i<W_RELAY_TOTAL;i++)
     pinMode(relayPins[i],OUTPUT);
-    sliding[i] = false;
-  }
   clearRelays();
   GenUUID();
 
