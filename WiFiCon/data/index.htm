@@ -28,7 +28,7 @@
             <div>
                 <div id="uptimew" class="stat rt"><div class="h">W Up Time</div><div class="v"></div></div>
                 <div id="uptimec" class="stat rt"><div class="h">C Up Time</div><div class="v"></div></div>
-                <div id="relayStatus" class="stat"><div class="h">J1</div><a href="" class="v"></a><span class="s"><a href="" class="i">In</a>&nbsp;<a href="" class="o">Out</a></span></div>
+                <div id="relayStatus" class="stat"><div class="h">J1</div><a href="" class="v"></a></span></div>
                 <div id="version" class="stat"></div>
                 <div class="stat lrg" id="timenow"></div>
                 <div id='nocontroller' class='stat error'>Controller is not responding</div>
@@ -41,6 +41,7 @@
         </div>
         <div id="menu">
             <a href="cells" class="active">Cells</a>
+            <a href="slides">Slides</a>
             <a href="limits">Limits</a>
             <a href="relays">Relays</a>
             <a href="batt">Battery</a>
@@ -56,6 +57,15 @@
             <div id="cellsRow"><div id="cellTV" style="display: none;" class="stat"><div class="h">Temp</div><div class="t"></div><a class="v"></a></div></div>
             <div id="cellDiv">
             <canvas id="cellCan" ></canvas></div>
+        </div>
+        <div id="slides">
+            <button id="slideStop">Stop</button>
+            <button>All Out</button>
+            <div id="slideControl">
+                <label id="slideName"></label>
+                <button>In</button>
+                <button>Out</button>
+            </div>
         </div>
         <div id="limits">
             <form method="POST" action="savelimits" autocomplete="off">
@@ -113,7 +123,7 @@
                     <span id="relayDoTherm"><label for="relayTherm">Temp:</label>
                         <select id="relayTherm" name="relayTherm"><option value="b">Board Temp</option><option value="c">Cell Temp</option></select></span>
                                 </div>
-                <div><label for="slideMS">Slide Secs:</label><input type="number" name="slideMS" id="slideMS" min="10000" max="60000"></div>
+                <div><label for="slideMS">Slide time (ms):</label><input type="number" name="slideMS" id="slideMS" min="10000" max="60000"></div>
                 <div class="buttonhold"><input type="submit" value="Save Settings" /></div>
             </form>
         </div>

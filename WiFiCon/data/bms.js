@@ -75,6 +75,7 @@ $(function () {
 });
 
 var RELAY_TOTAL=0;
+var W_RELAY_TOTAL=0;
 var nCells=-1;
 var myChart,config;
 var nonCellLines = 3;
@@ -292,6 +293,13 @@ function getSettings(s) {
                 $("input[name='doLogging']").prop("checked", data.doLogging);
                 $("input[name='ssid']").val(data.ssid);
             } else if (s == "cells") {
+            } else if (s == "slides") {
+                for (var i=0;i<W_RELAY_TOTAL;i++)
+                    $("#slideControl"+i).hide();
+                $.each(data.relaySettings, function (index, value) {
+                    $("#slideName" + value.relay).text(value.name);
+                    $("#slideControl"+value.relay).show();
+                });
             } else if (s == "batt") {
                 $("input[name='PollFreq']").val(data.PollFreq);
                 $("input[name='Avg']").val(data.Avg);
@@ -330,7 +338,7 @@ function getSettings(s) {
 
 
             } else if (s == "relays") {
-                $("#slideSecs").val(data.slideSecs);
+                $("#slideMS").val(data.slideMS);
                 $.each(data.relaySettings, function (index, value) {
                     $("#relayName" + index).val(value.name);
                     $("#relayFrom" + index).val(value.from);
@@ -364,23 +372,19 @@ function queryBMS() {
             setupRelays(data.RELAY_TOTAL);
             RELAY_TOTAL = data.RELAY_TOTAL;
         }
+        if (data.W_RELAY_TOTAL && !W_RELAY_TOTAL) {
+            setupWRelays(data.W_RELAY_TOTAL);
+            W_RELAY_TOTAL = data.W_RELAY_TOTAL;
+        }
         for (var i=0;i<RELAY_TOTAL;i++) {
             var rn = data["relayName"+i];
             if (rn && rn.length) {
                 $("#relayStatus"+i).show();
                 $("#relayStatus"+i+" .h").html(rn);
                 if (data["relaySlide"+i]) {
-                    $("#relayStatus"+i+" .v").hide();
-                    $("#relayStatus"+i+" .s").show();
-                    $("#relayStatus"+i+" .i").removeClass("manoff");
-                    $("#relayStatus"+i+" .o").removeClass("manoff");
-                    if (data["relaySlide"+i] == "out")
-                        $("#relayStatus"+i+" .o").addClass("manoff");
-                    else if (data["relaySlide"+i] == "in")
-                        $("#relayStatus"+i+" .i").addClass("manoff");
+                    $("#relayStatus"+i+" .v").html(data["relaySlide"+i]);
                 } else {
-                    $("#relayStatus"+i+" .v").html(data["relayStatus"+i]).show();
-                    $("#relayStatus"+i+" .s").hide();
+                    $("#relayStatus"+i+" .v").html(data["relayStatus"+i]);
                     if (data["relayOff"+i] == "off")
                         $("#relayStatus"+i+" .v").addClass("manoff");
                     else $("#relayStatus"+i+" .v").removeClass("manoff");
@@ -592,34 +596,37 @@ function setupRelays(rt) {
                 }
             });
             return false;
-         });
-         var theA = temp.find("a.o,a.i");
-         theA.attr("relay",rel);
-         theA.click(function () {
-             var r = $(this).attr("relay");
-             $.ajax({
-                type: "POST",
-                url: "/slide",
-                data: { relay: r, dir:$(this).hasClass("o"), stop: $(this).hasClass("manoff")},
-                dataType: 'json',
-                success: function (data) {
-                    $("#relayStatus"+r+" .o").removeClass("manoff");
-                    $("#relayStatus"+r+" .i").removeClass("manoff");
-                    if (data.status == "out")
-                        $("#relayStatus"+r+" .o").addClass("manoff");
-                    else if (data.status == "in")
-                        $("#relayStatus"+r+" .i").addClass("manoff");
-
-                },
-                fail: function (data) {
-                    $("#saveerror").show().delay(2000).fadeOut(500);
-                }});
-             return false;
-          });
-         temp.insertBefore("#relayStatus");
+        });
+        temp.insertBefore("#relayStatus");
     }
-    $("#relay").remove();
-    $("#relayStatus").remove();
+    $("#relay").hide();
+    $("#relayStatus").hide();
+}
+
+function setupWRelays(rt) {
+    for (var rel=0;rel<rt;rel++) {
+        temp = $("#slideControl").clone();
+        temp.attr({id: "slideControl" + rel});
+        temp.find("label").attr({id: "slideName"+rel});
+        var theB = temp.find("button");
+        theB.attr("relay",rel);
+        theB.click(function () {
+            var r = $(this).attr("relay");
+            $.ajax({
+            type: "POST",
+            url: "/slide",
+            data: { relay: r, dir:$(this).text() == "Out"},
+            dataType: 'json',
+            success: function (data) {
+            },
+            fail: function (data) {
+                $("#saveerror").show().delay(2000).fadeOut(500);
+            }});
+            return false;
+        });
+        temp.insertBefore("#slideControl");
+    }
+    $("#slideControl").hide();
 }
 
 function doSubmit(e) {
@@ -675,5 +682,17 @@ function Setup() {
     $("#limit").remove();
     
     $("form").unbind('submit').submit(doSubmit);
-        
+    $("#slideStop").click(function(event) {
+        $.ajax({
+            type: "GET",
+            url: "/slideStop",
+            success: function (data) {
+                $("#savesuccess").show().delay(2000).fadeOut(500);
+            },
+            error: function (data) {
+                $("#saveerror").show().delay(2000).fadeOut(500);
+            }
+        });
+        return false;
+    });
 }
