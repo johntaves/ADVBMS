@@ -381,13 +381,16 @@ function queryBMS() {
             if (rn && rn.length) {
                 $("#relayStatus"+i).show();
                 $("#relayStatus"+i+" .h").html(rn);
-                if (data["relaySlide"+i]) {
-                    $("#relayStatus"+i+" .v").html(data["relaySlide"+i]);
-                } else {
-                    $("#relayStatus"+i+" .v").html(data["relayStatus"+i]);
+                if (data["relaySlide"+i] == null) {
                     if (data["relayOff"+i] == "off")
-                        $("#relayStatus"+i+" .v").addClass("manoff");
-                    else $("#relayStatus"+i+" .v").removeClass("manoff");
+                        $("#relayStatus"+i+" a.v").addClass("manoff");
+                    else $("#relayStatus"+i+" a.v").removeClass("manoff");
+                    $("#relayStatus"+i+" div.v").hide();
+                    $("#relayStatus"+i+" a.v").html(data["relayStatus"+i]).show();
+                } else {
+                    var pct = data["relaySlide"+i];
+                    $("#relayStatus"+i+" div.v").html(!pct?"In":pct==100?"Out":pct).show();
+                    $("#relayStatus"+i+" a.v").hide();
                 }
             } else $("#relayStatus"+i).hide();
         }
@@ -682,10 +685,10 @@ function Setup() {
     $("#limit").remove();
     
     $("form").unbind('submit').submit(doSubmit);
-    $("#slideStop").click(function(event) {
+    $("#slideStop,#allOut,#allIn").click(function(event) {
         $.ajax({
             type: "GET",
-            url: "/slideStop",
+            url: '/'+$(this).attr('id'),
             success: function (data) {
                 $("#savesuccess").show().delay(2000).fadeOut(500);
             },
