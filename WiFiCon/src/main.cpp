@@ -46,9 +46,9 @@ AsyncWebServer server(80);
 SMTPData smtpData;
 uint8_t previousRelayState[W_RELAY_TOTAL];
 
-uint32_t slideStart;
-int32_t slidePos[W_RELAY_TOTAL];
-bool slidingOut;
+volatile uint32_t slideStart;
+volatile int32_t slidePos[W_RELAY_TOTAL];
+volatile bool slidingOut,doingAll = false;
 int dirRelayPin,sliding = -1;
 String emailRes = "";
 
@@ -343,35 +343,66 @@ void batt(AsyncWebServerRequest *request){
   request->send(response);
 }
 
-void stopSlide() {
-  if (sliding < 0) return;
+void slideGo(int);
+void _StopSlide() {
+  if (sliding < 0)
+    return;
   digitalWrite(relayPins[sliding],LOW);
   uint32_t diff = millis() - slideStart;
   if (slidingOut) slidePos[sliding] += diff;
   else slidePos[sliding] -= diff;
   if (slidePos[sliding] < 0) slidePos[sliding] = 0;
-  Serial.printf("Stop: %d\n",slidePos[sliding]);
-  sliding = -1;
+//  Serial.printf("Stop: %d\n",slidePos[sliding]);
   slider.detach();
   if (dirRelayPin)
     digitalWrite(dirRelayPin,LOW);
 }
 
+int nextSlide(int cur) {
+  for (int i=0;i<W_RELAY_TOTAL;i++)
+    if (relSets.relays[i].type == Relay_Slide && slidePos[i] < 0)
+      return -1;
+  for (int i=cur+1;i<W_RELAY_TOTAL;i++)
+    if (relSets.relays[i].type == Relay_Slide)
+      return i;
+  return -1;
+}
+
+void slideTimeUp() {
+  _StopSlide();
+  if (doingAll) {
+    sliding = nextSlide(sliding);
+    if (sliding < 0)
+      doingAll = false;
+    else
+      slideGo(sliding);
+  } else
+    sliding = -1;
+}
+
+void stopSlide() {
+  doingAll = false;
+  _StopSlide();
+  sliding = -1;
+}
+
 void slideGo(int r) {
   uint32_t rem;
+//Serial.printf("G: %d %d %d\n",r,slidePos[r],sliding);
   if (slidePos[r] < 0) {
     slidingOut = false;
     rem = statSets.slideMS;
   } else if (slidingOut)
     rem = statSets.slideMS - slidePos[r];
-  else rem = slidePos[r];
+  else rem = slidePos[r]+2000; // because the in will stop at the stops OK, so add extra to eliminate accumulated error
   if (rem <= statSets.slideMS || !slidingOut) {
     slideStart = millis();
+  //  Serial.printf("Sliding %d %d %s\n",r,rem,(slidingOut?"out":"in"));
     if (rem) {
       sliding = r;
       digitalWrite(relayPins[r],HIGH);
       digitalWrite(dirRelayPin,slidingOut ? LOW : HIGH);
-      slider.once_ms(rem,stopSlide);
+      slider.once_ms(rem,slideTimeUp);
     }
   }
 
@@ -424,6 +455,25 @@ void slide(AsyncWebServerRequest *request) {
 
 void slideStop(AsyncWebServerRequest *request) {
   stopSlide();
+  sendSuccess(request);
+}
+
+void goAll() {
+  doingAll = true;
+  int i = nextSlide(-1);
+  if (i>=0) slideGo(i);
+}
+void allOut(AsyncWebServerRequest *request) {
+  stopSlide();
+  slidingOut = true;
+  goAll();
+  sendSuccess(request);
+}
+
+void allIn(AsyncWebServerRequest *request) {
+  stopSlide();
+  slidingOut = false;
+  goAll();
   sendSuccess(request);
 }
 
@@ -832,6 +882,8 @@ void startServer() {
   server.on("/saveOff", HTTP_POST, saveOff);
   server.on("/slide", HTTP_POST, slide);
   server.on("/slideStop", HTTP_GET, slideStop);
+  server.on("/allOut", HTTP_GET, allOut);
+  server.on("/allIn", HTTP_GET, allIn);
   server.on("/fullChg", HTTP_POST, fullChg);
   server.on("/clrMaxDiff", HTTP_GET, clrMaxDiff);
   server.on("/dump", HTTP_POST, dump);
@@ -1044,7 +1096,6 @@ void setup() {
       else dirRelayPin = relayPins[i];
     }
   }
-Serial.printf("Dir pn %d\n",dirRelayPin);
   if (!readEE("disp",(uint8_t*)&dispSets,sizeof(dispSets)))
     dispSets.doCelsius = true;
 
