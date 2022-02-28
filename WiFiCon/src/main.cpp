@@ -359,7 +359,6 @@ void stopSlide() {
 
 void slideGo(int r) {
   uint32_t rem;
-Serial.printf("G: %d %d %d\n",r,slidePos[r],sliding);
   if (slidePos[r] < 0) {
     slidingOut = false;
     rem = statSets.slideMS;
@@ -368,7 +367,6 @@ Serial.printf("G: %d %d %d\n",r,slidePos[r],sliding);
   else rem = slidePos[r];
   if (rem <= statSets.slideMS || !slidingOut) {
     slideStart = millis();
-    Serial.printf("Sliding %d %d %s\n",r,rem,(slidingOut?"out":"in"));
     if (rem) {
       sliding = r;
       digitalWrite(relayPins[r],HIGH);
@@ -959,17 +957,17 @@ void checkStatus()
 void MsgEvent(EventMsg *mp) {
   trimLastEventMsg();
   if (mp->cmd >= CellTopV && mp->cmd <= CellBotV)
-    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s #%d %dV,",lastEventMsg,mp->cell,mp->amps);
+    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s V%d %dA,",lastEventMsg,mp->cell,mp->amps);
   else if (mp->cmd >= CellTopT && mp->cmd <= CellBotT)
-    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s #%d %dT,",lastEventMsg,mp->cell,mp->amps);
+    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s T%d %dA,",lastEventMsg,mp->cell,mp->amps);
   else if (mp->cmd >= PackTopV && mp->cmd <= PackBotV)
-    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s %dV,",lastEventMsg,mp->amps);
+    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s V%dA,",lastEventMsg,mp->amps);
   else if (mp->cmd >= PackTopV && mp->cmd <= PackBotV)
-    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s %dT,",lastEventMsg,mp->amps);
+    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s T%dA,",lastEventMsg,mp->amps);
   else if (mp->cmd == CellsOverDue)
-    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s #%d %dX,",lastEventMsg,mp->cell,mp->amps);
+    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s X%d %dA,",lastEventMsg,mp->cell,mp->amps);
   else if (mp->cmd == CellsDisc)
-    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s #%d %dD,",lastEventMsg,mp->cell,mp->amps);
+    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s D%d %dA,",lastEventMsg,mp->cell,mp->amps);
 }
 void WonSerData(const AMsg *mp)
 {
