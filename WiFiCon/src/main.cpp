@@ -308,21 +308,21 @@ void events(AsyncWebServerRequest *request){
       break;
     JsonObject evt = data.createNestedObject();
     switch (ep->msg.cmd) {
-      case WatchDog: evt["cmd"] = "Watch Dog";
-      case CellsOverDue: evt["cmd"] = "Cell Overdue";
-      case CellTopV: evt["cmd"] = "Cell Over V";
-      case CellBotV: evt["cmd"] = "Cell Under V";
-      case CellTopT: evt["cmd"] = "Cell Over T";
-      case CellBotT: evt["cmd"] = "Cell Under T";
-      case PackTopV: evt["cmd"] = "Pack Over V";
-      case PackBotV: evt["cmd"] = "Pack Under V";
-      case PackTopT: evt["cmd"] = "Pack Over T";
-      case PackBotT: evt["cmd"] = "Pack Under T";
-      case HeaterOn: evt["cmd"] = "Heat On";
-      case HeaterOff: evt["cmd"] = "Heat Off";
-      case ConnCell: evt["cmd"] = "Connected";
-      case DiscCell: evt["cmd"] = "Disconnected";
-      default: evt["cmd"] = ep->msg.cmd;
+      case WatchDog: evt["cmd"] = "Watch Dog"; break;
+      case CellsOverDue: evt["cmd"] = "Cell Overdue"; break;
+      case CellTopV: evt["cmd"] = "Cell Over V"; break;
+      case CellBotV: evt["cmd"] = "Cell Under V"; break;
+      case CellTopT: evt["cmd"] = "Cell Over T"; break;
+      case CellBotT: evt["cmd"] = "Cell Under T"; break;
+      case PackTopV: evt["cmd"] = "Pack Over V"; break;
+      case PackBotV: evt["cmd"] = "Pack Under V"; break;
+      case PackTopT: evt["cmd"] = "Pack Over T"; break;
+      case PackBotT: evt["cmd"] = "Pack Under T"; break;
+      case HeaterOn: evt["cmd"] = "Heat On"; break;
+      case HeaterOff: evt["cmd"] = "Heat Off"; break;
+      case ConnCell: evt["cmd"] = "Connected"; break;
+      case DiscCell: evt["cmd"] = "Disconnected"; break;
+      default: evt["cmd"] = ep->msg.cmd; break;
     }
     evt["tC"] = ep->msg.tC;
     evt["mV"] = ep->msg.mV;
