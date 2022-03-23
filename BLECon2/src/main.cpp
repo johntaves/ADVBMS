@@ -105,12 +105,19 @@ void doAHCalcs() {
   curAdjMilliAmpMillis[curAdj] = 0;
 }
 
-void SendEvent(uint8_t cmd,uint32_t amps=0, uint16_t val=0,int cell=0) {
+void SendOverDueEvent(int cell,uint16_t time) {
+  EventMsg evt;
+  evt.cmd = CellsOverDue;
+  evt.time = time;
+  BMSSend(&evt);
+}
+void SendEvent(uint8_t cmd,int32_t amps=0, uint16_t volts=0,int8_t temp=0,int cell=0) {
   EventMsg evt;
   evt.cmd = cmd;
   evt.cell = cell;
-  evt.val = val;
-  evt.amps = (uint16_t)(amps/1000000);
+  evt.mV = volts;
+  evt.tC = temp;
+  evt.amps = (int16_t)(amps/1000000);
   BMSSend(&evt);
 }
 
@@ -340,23 +347,22 @@ void checkStatus()
   int nCellsAlive = 0;
   for (int8_t i = 0; i < dynSets.nCells; i++)
   {
-    if (!st.cells[i].conn || !st.cells[i].volts || (millis() - cells[i].cellLast) > (5*dynSets.cellSets.time)) {
-      if (!cellsOverDue) {
-        clearRelays();
-        SendEvent(CellsOverDue,st.lastMicroAmps,0,i);
-      }
+    if (!st.cells[i].conn || !st.cells[i].volts || (millis() - cells[i].cellLast) > (1000*(uint32_t)statSets.CellsOutTime)) {
+      if (!cellsOverDue)
+        SendOverDueEvent(i,millis() - cells[i].cellLast);
       cellsOverDue = true;
-      break;
+      continue;
     }
     nCellsAlive++;
       
     uint16_t cellV = st.cells[i].volts;
+    int8_t cellT = st.cells[i].exTemp;
     totalVolts += cellV;
 
     if (cellV > statSets.limits[LimitConsts::Volt][LimitConsts::Cell][LimitConsts::Max][LimitConsts::Trip]) {
       if (!st.maxCellVState) {
         if (!hitTop)
-          SendEvent(CellTopV,st.lastMicroAmps,cellV,i);
+          SendEvent(CellTopV,st.lastMicroAmps,cellV,cellT,i);
         hitTop = true;
       }
       st.maxCellVState = true;
@@ -367,7 +373,7 @@ void checkStatus()
     if (cellV < statSets.limits[LimitConsts::Volt][LimitConsts::Cell][LimitConsts::Min][LimitConsts::Trip]) {
       if (!st.minCellVState) {
         if (!hitUnder)
-          SendEvent(CellBotV,st.lastMicroAmps,cellV,i);
+          SendEvent(CellBotV,st.lastMicroAmps,cellV,cellT,i);
         hitUnder = true;
       }
       st.minCellVState = true;
@@ -375,11 +381,10 @@ void checkStatus()
     if (cellV < statSets.limits[LimitConsts::Volt][LimitConsts::Cell][LimitConsts::Min][LimitConsts::Rec])
       allundervoltrec = false;
 
-    int8_t cellT = st.cells[i].exTemp;
     if (statSets.useCellC && cellT != -40) {
       if (cellT > statSets.limits[LimitConsts::Temp][LimitConsts::Cell][LimitConsts::Max][LimitConsts::Trip]) {
         if (!st.maxCellCState)
-          SendEvent(CellTopT,st.lastMicroAmps,cellT,i);
+          SendEvent(CellTopT,st.lastMicroAmps,cellV,cellT,i);
         st.maxCellCState = true;
       }
 
@@ -388,7 +393,7 @@ void checkStatus()
 
       if (cellT < statSets.limits[LimitConsts::Temp][LimitConsts::Cell][LimitConsts::Min][LimitConsts::Trip]) {
         if (!st.minCellCState)
-          SendEvent(CellBotT,st.lastMicroAmps,cellT,i);
+          SendEvent(CellBotT,st.lastMicroAmps,cellV,cellT,i);
         st.minCellCState = true;
       }
       if (cellT < statSets.limits[LimitConsts::Temp][LimitConsts::Cell][LimitConsts::Min][LimitConsts::Rec])
@@ -483,8 +488,11 @@ void checkStatus()
   uint8_t relay[C_RELAY_TOTAL];
   bool wasLoadsOff = loadsOff;
   bool wasChgOff = chgOff;
-  loadsOff = st.minCellVState || st.minPackVState || st.maxCellCState || st.maxPackCState;
-  chgOff = st.maxChargePctState || st.maxCellVState || st.maxPackVState || st.minCellCState || st.maxCellCState || st.minPackCState || st.maxPackCState;
+  loadsOff = st.minCellVState || st.minPackVState || st.maxCellCState || st.maxPackCState
+      || (cellsOverDue && (!st.stateOfChargeValid || st.stateOfCharge < statSets.CellsOutMin));
+  chgOff = st.maxChargePctState || st.maxCellVState || st.maxPackVState || st.minCellCState
+           || st.maxCellCState || st.minPackCState || st.maxPackCState
+           || (cellsOverDue && (!st.stateOfChargeValid || st.stateOfCharge > statSets.CellsOutMax));
   for (int8_t y = 0; y < C_RELAY_TOTAL; y++)
   {
     RelaySettings *rp = &statSets.relays[y];
@@ -495,18 +503,19 @@ void checkStatus()
       switch (rp->type) {
         default:
           break;
-        case Relay_Connect: relay[y] = cellsOverDue || (wasLoadsOff && loadsOff && st.lastMicroAmps < 0) || (wasChgOff && chgOff && st.lastMicroAmps > 0)?LOW:HIGH; break;
+        case Relay_Connect: relay[y] = (wasLoadsOff && loadsOff && st.lastMicroAmps < 0)
+         || (wasChgOff && chgOff && st.lastMicroAmps > 0)?LOW:HIGH; break;
         case Relay_Load:
           if (isFromOff(rp))
             relay[y] = HIGH;
-          else if (loadsOff || cellsOverDue || (rp->doSoC && (!st.stateOfChargeValid || st.stateOfCharge < rp->trip)))
+          else if (loadsOff || (rp->doSoC && (!st.stateOfChargeValid || st.stateOfCharge < rp->trip)))
             relay[y] = LOW; // turn if off
           else if (!rp->doSoC || (rp->doSoC && st.stateOfChargeValid && st.stateOfCharge > rp->rec))
             relay[y] = HIGH; // turn it on
           // else leave it as-is
           break;
         case Relay_Charge:
-          if (chgOff || cellsOverDue || (rp->doSoC && (!st.stateOfChargeValid || st.stateOfCharge > rp->trip)))
+          if (chgOff || (rp->doSoC && (!st.stateOfChargeValid || st.stateOfCharge > rp->trip)))
             relay[y] = LOW; // off
           else if (!rp->doSoC || (rp->doSoC && st.stateOfChargeValid && st.stateOfCharge < rp->rec))
             relay[y] = HIGH; // on

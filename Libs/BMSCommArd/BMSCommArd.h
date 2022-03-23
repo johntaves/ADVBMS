@@ -13,7 +13,7 @@ enum Msg {
 
   FirstEvent,
   WatchDog,
-  CellsOverDue,CellsDisc,
+  CellsOverDue,
   CellTopV,
   CellBotV,
   CellTopT,
@@ -21,7 +21,9 @@ enum Msg {
   PackTopV,
   PackBotV,
   PackTopT,
-  PackBotT,LastEvent,
+  PackBotT,
+  HeaterOn,
+  HeaterOff,LastEvent,
 
   FirstStr,Panic,DebugStr,LastStr,
 
@@ -47,8 +49,10 @@ struct AMsg {
 struct EventMsg {
   uint8_t crc,cmd;
   uint8_t cell;
-  uint16_t val;
-  uint16_t amps;
+  int8_t tC;
+  uint16_t mV;
+  int16_t amps;
+  uint16_t time;
 } __attribute__((packed));
 
 struct SettingMsg {

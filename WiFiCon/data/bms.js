@@ -55,10 +55,10 @@ $(function () {
         });
         return false;
     });
-    $("#lastEventMsg a").click(function(event) {
+    $("#lastEventTime a").click(function(event) {
         $.ajax({
             type: "GET",
-            url: "/hideLastEventMsg",
+            url: "/hideLastEventTime",
             success: function (data) {
                 $("#savesuccess").show().delay(2000).fadeOut(500);
             },
@@ -300,6 +300,18 @@ function getSettings(s) {
                     $("#slideName" + value.relay).text(value.name);
                     $("#slideControl"+value.relay).show();
                 });
+            } else if (s == "events") {
+                $('#eventTable > tbody').empty();
+                $.each(data.events, function (index, value) {
+                    $('#eventTable > tbody').append($('<tr>')
+                        .append($('<td>').append(value.cmd))
+                        .append($('<td>').append(new Date(1000 * value.when).toLocaleString()))
+                        .append($('<td>').append(value.cell))
+                        .append($('<td>').append(value.tC))
+                        .append($('<td>').append(value.mV))
+                        .append($('<td>').append(value.amps))
+                        .append($('<td>').append(value.time)));
+                });
             } else if (s == "batt") {
                 $("input[name='PollFreq']").val(data.PollFreq);
                 $("input[name='Avg']").val(data.Avg);
@@ -362,11 +374,11 @@ function queryBMS() {
     var histSize = 100;
     $.getJSON("status", function (data) {
         if (data.debugstr) $("#debugstr").show().html(data.debugstr);
-        else $("#debugstr").hide();lastEventMsg
-        if (data.lastEventMsg) {
-            $("#lastEventMsg").show();
-            $("#lastEventMsg a").html(data.lastEventMsg);
-        } else $("#lastEventMsg").hide();
+        else $("#debugstr").hide();
+        if (data.lastEventTime) {
+            $("#lastEventTime").show();
+            $("#lastEventTime a").html(new Date(1000 * data.lastEventTime).toLocaleString());
+        } else $("#lastEventTime").hide();
 
         if (data.RELAY_TOTAL && !RELAY_TOTAL) {
             setupRelays(data.RELAY_TOTAL);

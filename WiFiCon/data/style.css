@@ -44,6 +44,10 @@ body {
     background-color: #B8ACDE;
 }
 
+#slides button {
+    font-size: xx-large;
+}
+
 #cellDivRow a {
     text-decoration: underline;
 }

@@ -19,14 +19,17 @@
 // improve the SoC allow to run logic. Make the code bad, and see if the charge/loads go off
 // email did not work going from unset to sent. A reboot seemed to help
 
-char debugstr[200],lastEventMsg[1024];
-int8_t lastEventMsgCnt=0;
+char debugstr[200];
 bool emailSetup=false,writeCommSet=false,writeWifiSet=false,writeDispSet=false,writeRelaySet=false;
 uint32_t statusMS=0;
 HTTPClient http;
 atomic_flag taskRunning(0);
 bool OTAInProg = false;
 Ticker watchDog,slider;
+
+time_t lastEventTime=0;
+int curEvent=0;
+Event evts[MAX_EVENTS];
 
 BMSStatus st;
 
@@ -55,16 +58,21 @@ String emailRes = "";
 uint8_t milliRolls=0;
 uint32_t lastMillis=0;
 
-void trimLastEventMsg() {
-  lastEventMsgCnt++;
-  if (lastEventMsgCnt > LAST_EVT_MSG_CNT) {
-    char* ptr = strchr(lastEventMsg,'|');
-    if (!ptr) ptr = strchr(lastEventMsg,',');
-    if (ptr) {
-      snprintf(lastEventMsg,sizeof(lastEventMsg),"%s",ptr+2);
-      lastEventMsgCnt = LAST_EVT_MSG_CNT;
-    }
+Event* NextEvent(EventMsg* mp = nullptr) {
+  Event* ep = &evts[curEvent++];
+  if (curEvent == MAX_EVENTS)
+    curEvent = 0;
+  if (mp) ep->msg = *mp;
+  else {
+    ep->msg.cell = MAX_CELLS;
+    ep->msg.tC = 0;
+    ep->msg.mV = 0;
+    ep->msg.amps = 0;
+    ep->msg.time = 0;
   }
+  ep->when = time(nullptr);
+  lastEventTime = ep->when;
+  return ep;
 }
 
 void InitOTA() {
@@ -280,6 +288,48 @@ void relays(AsyncWebServerRequest *request){
     rule1["trip"] = rp->trip;
     rule1["rec"] = rp->rec;
     rule1["therm"] = std::string(1, rp->therm);
+  }
+
+  serializeJson(doc, *response);
+  request->send(response);
+}
+
+void events(AsyncWebServerRequest *request){  
+  AsyncResponseStream *response =
+      request->beginResponseStream("application/json");
+  DynamicJsonDocument doc(8192);
+  JsonObject root = doc.to<JsonObject>();
+  JsonArray data = root.createNestedArray("events");
+  Serial.printf("Es: %d\n",curEvent);
+  for (int i=curEvent-1;i != curEvent;i--) {
+    if (i < 0) i = MAX_EVENTS-1;
+    Event* ep = &evts[i];
+    if (!ep->when)
+      break;
+    JsonObject evt = data.createNestedObject();
+    switch (ep->msg.cmd) {
+      case WatchDog: evt["cmd"] = "Watch Dog";
+      case CellsOverDue: evt["cmd"] = "Cell Overdue";
+      case CellTopV: evt["cmd"] = "Cell Over V";
+      case CellBotV: evt["cmd"] = "Cell Under V";
+      case CellTopT: evt["cmd"] = "Cell Over T";
+      case CellBotT: evt["cmd"] = "Cell Under T";
+      case PackTopV: evt["cmd"] = "Pack Over V";
+      case PackBotV: evt["cmd"] = "Pack Under V";
+      case PackTopT: evt["cmd"] = "Pack Over T";
+      case PackBotT: evt["cmd"] = "Pack Under T";
+      case HeaterOn: evt["cmd"] = "Heat On";
+      case HeaterOff: evt["cmd"] = "Heat Off";
+      case ConnCell: evt["cmd"] = "Connected";
+      case DiscCell: evt["cmd"] = "Disconnected";
+      default: evt["cmd"] = ep->msg.cmd;
+    }
+    evt["cell"] = ep->msg.cell;
+    evt["tC"] = ep->msg.tC;
+    evt["mV"] = ep->msg.mV;
+    evt["time"] = ep->msg.time;
+    evt["amps"] = ep->msg.amps;
+    evt["when"] = ep->when;
   }
 
   serializeJson(doc, *response);
@@ -556,7 +606,8 @@ void fillStatusDoc(JsonVariant root) {
   root["now"]=time(nullptr);
   root["version"] = "V: 0.6";
   root["debugstr"] = debugstr;
-  root["lastEventMsg"] = lastEventMsg;
+  if (lastEventTime)
+    root["lastEventTime"] = lastEventTime;
   root["watchDogHits"] = st.watchDogHits;
   root["RELAY_TOTAL"] = RELAY_TOTAL;
   root["W_RELAY_TOTAL"] = W_RELAY_TOTAL;
@@ -853,9 +904,8 @@ void savecapacity(AsyncWebServerRequest *request) {
   sendSuccess(request);
 }
 
-void hideLastEventMsg(AsyncWebServerRequest *request) {
-  lastEventMsg[0] = 0;
-  lastEventMsgCnt = 0;
+void hideLastEventTime(AsyncWebServerRequest *request) {
+  lastEventTime = 0;
   sendSuccess(request);
 }
 
@@ -877,7 +927,7 @@ void startServer() {
   });
 
   server.on("/toggleTemp", HTTP_GET, toggleTemp);
-  server.on("/hideLastEventMsg", HTTP_GET, hideLastEventMsg);
+  server.on("/hideLastEventTime", HTTP_GET, hideLastEventTime);
   server.on("/saveemail", HTTP_POST, saveemail);
   server.on("/saveOff", HTTP_POST, saveOff);
   server.on("/slide", HTTP_POST, slide);
@@ -898,6 +948,7 @@ void startServer() {
   server.on("/limits", HTTP_GET, limits);
   server.on("/relays", HTTP_GET, relays);
   server.on("/slides", HTTP_GET, slides);
+  server.on("/events", HTTP_GET, events);
   server.on("/batt", HTTP_GET, batt);
   server.on("/net", HTTP_GET, net);
   server.on("/status", HTTP_GET, status);
@@ -988,8 +1039,10 @@ void checkStatus()
           else if (val > rp->rec)
             relay[y] = LOW;
           if (previousRelayState[y] != relay[y]) {
-            trimLastEventMsg();
-            snprintf(lastEventMsg,sizeof(lastEventMsg),"%s H%d %d %d %d,",lastEventMsg,val,minCell,rp->rec,rp->trip);
+            Event* ep = NextEvent();
+            ep->msg.cmd = relay[y] == HIGH ? HeaterOn : HeaterOff;
+            ep->msg.cell = minCell;
+            ep->msg.tC = val;
           }
           break;
       }
@@ -1007,19 +1060,8 @@ void checkStatus()
 }
 
 void MsgEvent(EventMsg *mp) {
-  trimLastEventMsg();
-  if (mp->cmd >= CellTopV && mp->cmd <= CellBotV)
-    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s V%d %dA,",lastEventMsg,mp->cell,mp->amps);
-  else if (mp->cmd >= CellTopT && mp->cmd <= CellBotT)
-    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s T%d %dA,",lastEventMsg,mp->cell,mp->amps);
-  else if (mp->cmd >= PackTopV && mp->cmd <= PackBotV)
-    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s V%dA,",lastEventMsg,mp->amps);
-  else if (mp->cmd >= PackTopV && mp->cmd <= PackBotV)
-    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s T%dA,",lastEventMsg,mp->amps);
-  else if (mp->cmd == CellsOverDue)
-    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s X%d %dA,",lastEventMsg,mp->cell,mp->amps);
-  else if (mp->cmd == CellsDisc)
-    snprintf(lastEventMsg,sizeof(lastEventMsg),"%s D%d %dA,",lastEventMsg,mp->cell,mp->amps);
+  Serial.println("Event");
+  NextEvent(mp);
 }
 void WonSerData(const AMsg *mp)
 {
@@ -1028,9 +1070,9 @@ void WonSerData(const AMsg *mp)
   else switch(mp->cmd) {
     case DiscCell:
     case ConnCell: 
-      trimLastEventMsg();
-      snprintf(lastEventMsg,sizeof(lastEventMsg),"%s %s%d,",lastEventMsg,mp->cmd == DiscCell?"D":"C"
-          ,((SettingMsg*)mp)->val);
+      { Event* ep = NextEvent();
+      ep->msg.cmd = mp->cmd;
+      ep->msg.cell = ((SettingMsg*)mp)->val; }
       break;
     case StatSets: statSets = *(StatSetts*)mp; break;
     case DynSets: dynSets = *(DynSetts*)mp; break;
@@ -1112,7 +1154,8 @@ void setup() {
   BMSWaitFor(&msg,StatSets);
   msg.cmd = DynQuery;
   BMSWaitFor(&msg,DynSets);
-
+  for (int i=0;i<MAX_EVENTS;i++)
+    evts[i].when = 0;
   digitalWrite(BLUE_LED,0);
 }
 

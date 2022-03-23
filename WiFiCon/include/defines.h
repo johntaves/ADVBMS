@@ -35,4 +35,10 @@ struct DispSettings {
   bool doCelsius;
 };
 
+#define MAX_EVENTS 20
+struct Event {
+  EventMsg msg;
+  time_t when;
+};
+
 #endif

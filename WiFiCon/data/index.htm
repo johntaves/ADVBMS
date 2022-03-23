@@ -36,12 +36,13 @@
                 <div id='savesuccess' class='stat success'>Settings saved</div>
                 <div id='errmess' class='stat error'></div>
                 <div id='debugstr' class='stat success'></div>
-                <div id='lastEventMsg' class='stat error'><a href=""></a></div>
+                <div id='lastEventTime' class='stat error'><a href=""></a></div>
             </div>
         </div>
         <div id="menu">
             <a href="cells" class="active">Cells</a>
             <a href="slides">Slides</a>
+            <a href="events">Events</a>
             <a href="limits">Limits</a>
             <a href="relays">Relays</a>
             <a href="batt">Battery</a>
@@ -67,6 +68,11 @@
                 <button>In</button>
                 <button>Out</button>
             </div>
+        </div>
+        <div id="events">
+            <table id="eventTable"><thead><tr>
+                <th>Type</th><th>When</th><th>cell</th><th>C</th><th>mV</th><th>A</th><th>ms</th>
+                </tr></thead><tbody></tbody></table>
         </div>
         <div id="limits">
             <form method="POST" action="savelimits" autocomplete="off">
