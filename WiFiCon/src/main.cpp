@@ -324,7 +324,6 @@ void events(AsyncWebServerRequest *request){
       case DiscCell: evt["cmd"] = "Disconnected";
       default: evt["cmd"] = ep->msg.cmd;
     }
-    evt["cell"] = ep->msg.cell;
     evt["tC"] = ep->msg.tC;
     evt["mV"] = ep->msg.mV;
     evt["time"] = ep->msg.time;
