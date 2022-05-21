@@ -649,6 +649,7 @@ void fillStatusDoc(JsonVariant root) {
 
   root["packcurrent"] = st.lastMicroAmps/1000;
   root["packvolts"] = st.lastPackMilliVolts;
+  root["pvvolts"] = st.lastPVMilliVolts;
   root["maxdiffvolts"] = st.maxDiffMilliVolts;
   root["pvcurrent"] = st.lastPVMicroAmps/1000;
   snprintf(spb,sizeof(spb),"%d%%",st.stateOfCharge);
