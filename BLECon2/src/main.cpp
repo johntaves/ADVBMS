@@ -861,6 +861,7 @@ void loop() {
   }
   if ((millis() - pvPollMS) > POLLPV) {
     st.lastPVMicroAmps = INA.getBusMicroAmps(1);
+    st.lastPVMilliVolts = INA.getBusMilliVolts(1);
     pvPollMS = millis();
   }
 
