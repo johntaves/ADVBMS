@@ -242,8 +242,12 @@ uint8_t INA_Class::begin(const uint16_t maxBusAmps, const uint32_t microOhmR,
 ** runtime to allocate sufficient space for 32 devices.                                           **
 ***************************************************************************************************/
 #if defined(ESP32) || defined(ESP8266)
-    EEPROM.begin(_EEPROM_size + _EEPROM_offset);  // If ESP32 then allocate 512 Bytes
-    maxDevices = (_EEPROM_size) / sizeof(inaEE);  // and compute number of devices
+    if (_expectedDevices) {
+      maxDevices = _expectedDevices;
+    } else {
+      EEPROM.begin(_EEPROM_size + _EEPROM_offset);  // If ESP32 then allocate 512 Bytes
+      maxDevices = (_EEPROM_size) / sizeof(inaEE);  // and compute number of devices
+    }
 #elif defined(__STM32F1__)                        // Emulated EEPROM for STM32F1
     maxDevices                     = (EEPROM.maxcount() - _EEPROM_offset) / sizeof(inaEE);  // Compute max possible
 #elif defined(CORE_TEENSY)                        // TEENSY doesn't have EEPROM.length
@@ -322,7 +326,7 @@ uint8_t INA_Class::begin(const uint16_t maxBusAmps, const uint32_t microOhmR,
               _DeviceCount = ((_DeviceCount + 1) % maxDevices);
             } else {
               initDevice(_DeviceCount);                          // perform initialization on device
-              _DeviceCount = ((_DeviceCount + 1) % maxDevices);  // start again at 0 if overflow
+              _DeviceCount++;  // start again at 0 if overflow
             }                                                    // of if-then inaEE.type
           }                                                      // of if-then we can add device
         }  // of if-then-else we have an INA-Type device
@@ -330,8 +334,9 @@ uint8_t INA_Class::begin(const uint16_t maxBusAmps, const uint32_t microOhmR,
     }      // for-next each possible I2C address
   } else {
     readInafromEEPROM(deviceNumber);                         // Load EEPROM to ina structure
-    ina.maxBusAmps = maxBusAmps > 1022 ? 1022 : maxBusAmps;  // Clamp to maximum of 1022A
-    ina.microOhmR  = microOhmR;
+    inaEE.maxBusAmps = maxBusAmps > 1022 ? 1022 : maxBusAmps;  // Clamp to maximum of 1022A
+    inaEE.microOhmR  = microOhmR;
+    ina = inaEE; // make inaDet happen again 
     initDevice(deviceNumber);
   }                         // of if-then-else first call
   _currentINA = UINT8_MAX;  // Force read on next call

@@ -561,10 +561,9 @@ void setINAs() {
   INA.setShuntConversion(dynSets.ConvTime);
   INA.setBusConversion(dynSets.ConvTime);
   INA.setAveraging(dynSets.Avg);
-//  INA.setShuntConversion(dynSets.PVConvTime,1);
-//  INA.setBusConversion(dynSets.PVConvTime,1);
-//  INA.setAveraging(dynSets.PVAvg,1);
-Serial.printf("%d %d %d %d\n",dynSets.ConvTime,dynSets.Avg,dynSets.PVConvTime,dynSets.PVAvg);
+  INA.setShuntConversion(dynSets.PVConvTime,1);
+  INA.setBusConversion(dynSets.PVConvTime,1);
+  INA.setAveraging(dynSets.PVAvg,1);
 }
 
 void setStateOfCharge(int64_t val,bool valid) {
