@@ -465,14 +465,24 @@ function queryBMS() {
         $("#celltemp .v").html(val);
 
         val = data.BoardTemp;
-        if (data.maxPackCState || data.minPackCState)
+        if (data.useBoardTemp && (data.maxPackCState || data.minPackCState))
             $("#BoardTemp .v").addClass("highlighted")
         else $("#BoardTemp .v").removeClass("highlighted")
-        if (data.maxPackCState)
+        if (data.useBoardTemp && data.maxPackCState)
             val = "over " + val;
-        if (data.minPackCState)
+        if (data.useBoardTemp && data.minPackCState)
             val = "under " + val;
         $("#BoardTemp .v").html(val);
+
+        val = data.Temp1;
+        if (val == -300) $("#Temp1").hide();
+        else $("#Temp1").show();
+        $("#Temp1 .v").html(val);
+        
+        val = data.Temp2;
+        if (val == -300) $("#Temp2").hide();
+        else $("#Temp2").show();
+        $("#Temp2 .v").html(val);
 
         $("#uptimec .v").html(data.uptimec);
         $("#uptimew .v").html(data.uptimew);

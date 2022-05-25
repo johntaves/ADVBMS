@@ -9,6 +9,7 @@
 
 #include <time.h>
 #include <Ticker.h>
+#include <BMSADC.h>
 #include <BMSCommArd.h>
 #include "defines.h"
 
@@ -41,6 +42,7 @@ DynSetts dynSets;
 StatSetts statSets;
 DispSettings dispSets;
 WRelaySettings relSets;
+int16_t Temp1,Temp2;
 
 char spb[1024];
 
@@ -183,7 +185,7 @@ int toCel(String val) {
 }
 
 int fromCel(int c) {
-  if (dispSets.doCelsius)
+  if (dispSets.doCelsius || c == -300)
     return c;
   return c*9/5+32;
 }
@@ -657,6 +659,8 @@ void fillStatusDoc(JsonVariant root) {
   root["soc"] = spb;
   root["socvalid"] = st.stateOfChargeValid;
   root["BoardTemp"] = fromCel(st.curBoardTemp);
+  root["Temp1"] = fromCel(Temp1);
+  root["Temp2"] = fromCel(Temp2);
   root["fullChg"] = st.doFullChg;
 
   root["maxCellVState"] = st.maxCellVState;
@@ -872,6 +876,7 @@ void savecellset(AsyncWebServerRequest *request) {
   msg.cellSets.delay = request->getParam("cellDelay", true)->value().toInt();
   msg.cellSets.resPwrOn = request->hasParam("resPwrOn", true) && request->getParam("resPwrOn", true)->value().equals("on");
   msg.cellSets.time = request->getParam("cellTime", true)->value().toInt();
+  dynSets.cellSets = msg.cellSets;
   BMSSend(&msg);
   sendSuccess(request);
 }
@@ -995,6 +1000,14 @@ void checkStatus()
 {
   statusMS = millis();
   uint8_t relay[W_RELAY_TOTAL];
+  digitalWrite(RESISTOR_PWR,HIGH);
+  if (dynSets.cellSets.delay)
+    delay(dynSets.cellSets.delay);
+  Temp1 = BMSReadTemp(TEMP1,false,statSets.bdVolts,4050,47000,51000,dynSets.cellSets.cnt);
+  Temp2 = BMSReadTemp(TEMP2,false,statSets.bdVolts,4050,47000,51000,dynSets.cellSets.cnt);
+  if (!dynSets.cellSets.resPwrOn)
+    digitalWrite(RESISTOR_PWR,LOW);
+
   for (int8_t y = 0; y < W_RELAY_TOTAL; y++)
   {
     RelaySettings *rp = &relSets.relays[y];
@@ -1096,6 +1109,11 @@ void xSendStatus(void* unused) {
 void setup() {
   Serial.begin(9600);
   Serial.println("Alive");
+  BMSADCInit();
+  adc1_config_channel_atten(TEMP1, ADC_ATTEN_DB_11);
+  adc1_config_channel_atten(TEMP2, ADC_ATTEN_DB_11);
+  pinMode(IGN, INPUT);
+  pinMode(RESISTOR_PWR, OUTPUT);
   pinMode(BLUE_LED, OUTPUT);
   digitalWrite(BLUE_LED,1);
   BMSInitCom(&WonSerData);
