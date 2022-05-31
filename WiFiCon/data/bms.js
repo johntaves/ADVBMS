@@ -312,6 +312,11 @@ function getSettings(s) {
                         .append($('<td>').append(value.amps))
                         .append($('<td>').append(value.time)));
                 });
+            } else if (s == "temps") {
+                $("input[name='t1B']").val(data.t1B);
+                $("input[name='t1R']").val(data.t1R);
+                $("input[name='t2B']").val(data.t2B);
+                $("input[name='t2R']").val(data.t2R);
             } else if (s == "batt") {
                 $("input[name='PollFreq']").val(data.PollFreq);
                 $("input[name='Avg']").val(data.Avg);

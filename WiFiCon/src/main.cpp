@@ -296,6 +296,20 @@ void relays(AsyncWebServerRequest *request){
   request->send(response);
 }
 
+void temps(AsyncWebServerRequest *request)
+{
+  AsyncResponseStream *response =
+      request->beginResponseStream("application/json");
+  DynamicJsonDocument doc(8192);
+  JsonObject root = doc.to<JsonObject>();
+  root["t1B"]=dispSets.t1B;
+  root["t1R"]=dispSets.t1R;
+  root["t2B"]=dispSets.t2B;
+  root["t2R"]=dispSets.t2R;
+  serializeJson(doc, *response);
+  request->send(response);
+}
+
 void events(AsyncWebServerRequest *request){  
   AsyncResponseStream *response =
       request->beginResponseStream("application/json");
@@ -697,6 +711,19 @@ void status(AsyncWebServerRequest *request){
   request->send(response);
 }
 
+void savetemps(AsyncWebServerRequest *request) {
+  if (request->hasParam("t1B", true))
+    dispSets.t1B = request->getParam("t1B", true)->value().toInt();
+  if (request->hasParam("t1R", true))
+    dispSets.t1R = request->getParam("t1R", true)->value().toInt();
+  if (request->hasParam("t2B", true))
+    dispSets.t2B = request->getParam("t2B", true)->value().toInt();
+  if (request->hasParam("t2R", true))
+    dispSets.t2R = request->getParam("t2R", true)->value().toInt();
+  writeDispSet = true;
+  sendSuccess(request);
+}
+
 void savelimits(AsyncWebServerRequest *request) {
   for (int l0=0;l0<LimitConsts::Max0;l0++) {
     for (int l1=0;l1<LimitConsts::Max1;l1++) {
@@ -948,6 +975,7 @@ void startServer() {
   server.on("/savewifi", HTTP_POST, savewifi);
   server.on("/savecapacity", HTTP_POST, savecapacity);
   server.on("/savecellset", HTTP_POST, savecellset);
+  server.on("/savetemps", HTTP_POST, savetemps);
   server.on("/savelimits", HTTP_POST, savelimits);
   server.on("/saverelays", HTTP_POST, saverelays);
   server.on("/cells", HTTP_GET, cells);
@@ -955,6 +983,7 @@ void startServer() {
   server.on("/relays", HTTP_GET, relays);
   server.on("/slides", HTTP_GET, slides);
   server.on("/events", HTTP_GET, events);
+  server.on("/temps", HTTP_GET, temps);
   server.on("/batt", HTTP_GET, batt);
   server.on("/net", HTTP_GET, net);
   server.on("/status", HTTP_GET, status);
@@ -1003,8 +1032,11 @@ void checkStatus()
   digitalWrite(RESISTOR_PWR,HIGH);
   if (dynSets.cellSets.delay)
     delay(dynSets.cellSets.delay);
-  Temp1 = BMSReadTemp(TEMP1,false,statSets.bdVolts,4050,47000,51000,dynSets.cellSets.cnt);
-  Temp2 = BMSReadTemp(TEMP2,false,statSets.bdVolts,4050,47000,51000,dynSets.cellSets.cnt);
+  uint16_t vp;
+  Temp1 = BMSReadTemp(TEMP1,false,statSets.bdVolts,dispSets.t1B,dispSets.t1R,51000,dynSets.cellSets.cnt,&vp);
+  Serial.printf("1: %d\n",vp);
+  Temp2 = BMSReadTemp(TEMP2,false,statSets.bdVolts,dispSets.t2B,dispSets.t2R,51000,dynSets.cellSets.cnt,&vp);
+  Serial.printf("2: %d\n",vp);
   if (!dynSets.cellSets.resPwrOn)
     digitalWrite(RESISTOR_PWR,LOW);
 
@@ -1157,8 +1189,11 @@ void setup() {
       else dirRelayPin = relayPins[i];
     }
   }
-  if (!readEE("disp",(uint8_t*)&dispSets,sizeof(dispSets)))
+  if (!readEE("disp",(uint8_t*)&dispSets,sizeof(dispSets))) {
     dispSets.doCelsius = true;
+    dispSets.t1B=dispSets.t2B=4050;
+    dispSets.t1R=dispSets.t2R=47000;
+  }
 
   for (int i=0;i<W_RELAY_TOTAL;i++)
     pinMode(relayPins[i],OUTPUT);

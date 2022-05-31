@@ -37,6 +37,7 @@ struct WRelaySettings {
 
 struct DispSettings {
   bool doCelsius;
+  uint32_t t1B,t1R,t2B,t2R;
 };
 
 #define MAX_EVENTS 20

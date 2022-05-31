@@ -14,8 +14,8 @@
         <div id="info">
             <div>
                 <div id="BoardTemp" class="stat rt"><div class="h">Board&deg;</div><a href="" class="v"></a></div>
-                <div id="Temp1" class="stat rt"><div class="h">Fr&deg;</div><div class="v"></div></div>
                 <div id="Temp2" class="stat rt"><div class="h">Re&deg;</div><div class="v"></div></div>
+                <div id="Temp1" class="stat rt"><div class="h">Fr&deg;</div><div class="v"></div></div>
                 <div id="celltemp" class="stat rt"><div class="h">Cell T</div><div class="v highlight"></div></div>
                 <div id="cellvolt" class="stat"><div class="h">Cell V</div><div class="v highlight"></div></div>
                 <div id="packcurrent" class="stat"><div class="h">Pack (A)</div><div class="v"></div></div>
@@ -45,6 +45,7 @@
             <a href="cells" class="active">Cells</a>
             <a href="slides">Slides</a>
             <a href="events">Events</a>
+            <a href="temps">Temps</a>
             <a href="limits">Limits</a>
             <a href="relays">Relays</a>
             <a href="batt">Battery</a>
@@ -75,6 +76,21 @@
             <table id="eventTable"><thead><tr>
                 <th>Type</th><th>When</th><th>cell</th><th>C</th><th>mV</th><th>A</th><th>ms</th>
                 </tr></thead><tbody></tbody></table>
+        </div>
+        <div id="temps">
+            <form method="POST" action="savetemps" autocomplete="off">
+                <div><label class="field" for="t1B">Temp 1 B:</label>
+                    <input type="number" name="t1B" id="t1B" step="1" >
+                    <label class="field" for="t1R">Ohms@25&deg;:</label>
+                    <input type="number" name="t1R" id="t1R" step="1" >
+                </div>
+                <div><label class="field" for="t2B">Temp 2 B:</label>
+                    <input type="number" name="t2B" id="t2B" step="1" >
+                    <label class="field" for="t2R">Ohms@25&deg;:</label>
+                    <input type="number" name="t2R" id="t2R" step="1" >
+                </div>
+                <div class="buttonhold"><input type="submit" value="Save Settings" /></div>
+            </form>
         </div>
         <div id="limits">
             <form method="POST" action="savelimits" autocomplete="off">
