@@ -89,8 +89,33 @@
                     <label class="field" for="t2R">Ohms@25&deg;:</label>
                     <input type="number" name="t2R" id="t2R" step="1" >
                 </div>
+                <div>
+                    <label class="field" for="nTSets">Num:</label>
+                    <input type="number" name="nTSets" id="nTSets" step="1" min="0" max="10" >
+                </div>
+                <div id="tsets"></div>
                 <div class="buttonhold"><input type="submit" value="Save Settings" /></div>
             </form>
+            <div id="tset" style="display:none">
+                <div><label class="field" for="tsetActive">Active</label><input type="checkbox" id="tsetActive" name="tsetActive"/></div>
+                <div>
+                    <label class="field" for="tsetStart">Start Min:</label><input type="number" id="tsetStart" name="tsetStart"/>
+                    <label class="field" for="tsetEnd">End Min:</label><input type="number" id="tsetEnd" name="tsetEnd"/>
+                </div>
+                <div>
+                    <label class="field" for="tsetTrip">Trip:</label><input type="number" id="tsetTrip" name="tsetTrip"/>
+                    <label class="field" for="tsetRec">Rec:</label><input type="number" id="tsetRec" name="tsetRec"/>
+                </div>
+                <div>
+                    <label for="tsetSu">Su:</label><input type="checkbox" id="tsetSu" name="tsetSu"/>
+                    <label for="tsetMo">Mo:</label><input type="checkbox" id="tsetMo" name="tsetMo"/>
+                    <label for="tsetTu">Tu:</label><input type="checkbox" id="tsetTu" name="tsetTu"/>
+                    <label for="tsetWe">We:</label><input type="checkbox" id="tsetWe" name="tsetWe"/>
+                    <label for="tsetTh">Th:</label><input type="checkbox" id="tsetTh" name="tsetTh"/>
+                    <label for="tsetFr">Fr:</label><input type="checkbox" id="tsetFr" name="tsetFr"/>
+                    <label for="tsetSa">Sa:</label><input type="checkbox" id="tsetSa" name="tsetSa"/>
+                </div>
+            </div>
         </div>
         <div id="limits">
             <form method="POST" action="savelimits" autocomplete="off">

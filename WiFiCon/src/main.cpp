@@ -306,6 +306,24 @@ void temps(AsyncWebServerRequest *request)
   root["t1R"]=dispSets.t1R;
   root["t2B"]=dispSets.t2B;
   root["t2R"]=dispSets.t2R;
+  root["nTSets"]=dispSets.nTSets;
+  JsonArray tSetArr = root.createNestedArray("tSets");
+  for (int i=0;i<dispSets.nTSets;i++) {
+    JsonObject tset = tSetArr.createNestedObject();
+    TempSet* ts = &dispSets.tSets[i];
+    tset["Active"] = ts->Active;
+    tset["Trip"] = ts->tripTemp;
+    tset["Rec"] = ts->recTemp;
+    tset["Start"] = ts->startMin;
+    tset["End"] = ts->endMin;
+    tset["Su"] = ts->Su;
+    tset["Mo"] = ts->Mo;
+    tset["Tu"] = ts->Tu;
+    tset["We"] = ts->We;
+    tset["Th"] = ts->Th;
+    tset["Fr"] = ts->Fr;
+    tset["Sa"] = ts->Sa;
+  }
   serializeJson(doc, *response);
   request->send(response);
 }
@@ -720,6 +738,41 @@ void savetemps(AsyncWebServerRequest *request) {
     dispSets.t2B = request->getParam("t2B", true)->value().toInt();
   if (request->hasParam("t2R", true))
     dispSets.t2R = request->getParam("t2R", true)->value().toInt();
+  if (request->hasParam("nTSets", true))
+    dispSets.nTSets = request->getParam("nTSets", true)->value().toInt();
+  for (int i=0;i<dispSets.nTSets && i<NUM_TEMPSETS;i++) {
+    char name[30];
+    TempSet* ts = &dispSets.tSets[i];
+    sprintf(name,"tsetActive%d",i);
+    ts->Active = request->hasParam(name,true);
+    sprintf(name,"tsetSu%d",i);
+    ts->Su = request->hasParam(name,true);
+    sprintf(name,"tsetMo%d",i);
+    ts->Mo = request->hasParam(name,true);
+    sprintf(name,"tsetTu%d",i);
+    ts->Tu = request->hasParam(name,true);
+    sprintf(name,"tsetWe%d",i);
+    ts->We = request->hasParam(name,true);
+    sprintf(name,"tsetTh%d",i);
+    ts->Th = request->hasParam(name,true);
+    sprintf(name,"tsetFr%d",i);
+    ts->Fr = request->hasParam(name,true);
+    sprintf(name,"tsetSa%d",i);
+    ts->Sa = request->hasParam(name,true);
+    sprintf(name,"tsetStart%d",i);
+    if (request->hasParam(name,true))
+      ts->startMin=request->getParam(name, true)->value().toInt();
+    sprintf(name,"tsetEnd%d",i);
+    if (request->hasParam(name,true))
+      ts->endMin=request->getParam(name, true)->value().toInt();
+    sprintf(name,"tsetTrip%d",i);
+    if (request->hasParam(name,true))
+      ts->tripTemp=request->getParam(name, true)->value().toInt();
+    sprintf(name,"tsetRec%d",i);
+    if (request->hasParam(name,true))
+      ts->recTemp=request->getParam(name, true)->value().toInt();
+    Serial.printf("%d\n",ts->startMin);
+  }
   writeDispSet = true;
   sendSuccess(request);
 }
@@ -1034,9 +1087,7 @@ void checkStatus()
     delay(dynSets.cellSets.delay);
   uint16_t vp;
   Temp1 = BMSReadTemp(TEMP1,false,statSets.bdVolts,dispSets.t1B,dispSets.t1R,51000,dynSets.cellSets.cnt,&vp);
-  Serial.printf("1: %d\n",vp);
   Temp2 = BMSReadTemp(TEMP2,false,statSets.bdVolts,dispSets.t2B,dispSets.t2R,51000,dynSets.cellSets.cnt,&vp);
-  Serial.printf("2: %d\n",vp);
   if (!dynSets.cellSets.resPwrOn)
     digitalWrite(RESISTOR_PWR,LOW);
 
@@ -1190,9 +1241,12 @@ void setup() {
     }
   }
   if (!readEE("disp",(uint8_t*)&dispSets,sizeof(dispSets))) {
+    memset(&dispSets,0,sizeof(dispSets));
     dispSets.doCelsius = true;
     dispSets.t1B=dispSets.t2B=4050;
     dispSets.t1R=dispSets.t2R=47000;
+    dispSets.nTSets = 1;
+    dispSets.tSets[0].Active = true;
   }
 
   for (int i=0;i<W_RELAY_TOTAL;i++)

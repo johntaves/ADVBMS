@@ -10,6 +10,7 @@
 #define TEMP2 ADC1_CHANNEL_3
 
 #define LAST_EVT_MSG_CNT 5
+#define NUM_TEMPSETS 10
 
 struct WiFiSettings {
   char ssid[33];
@@ -35,9 +36,16 @@ struct WRelaySettings {
   RelaySettings relays[W_RELAY_TOTAL];
 };
 
+struct TempSet {
+  uint16_t startMin,endMin;
+  int8_t tripTemp,recTemp;
+  uint8_t Active:1,Su:1,Mo:1,Tu:1,We:1,Th:1,Fr:1,Sa:1; 
+};
+
 struct DispSettings {
   bool doCelsius;
-  uint32_t t1B,t1R,t2B,t2R;
+  uint32_t t1B,t1R,t2B,t2R,nTSets;
+  TempSet tSets[NUM_TEMPSETS];
 };
 
 #define MAX_EVENTS 20

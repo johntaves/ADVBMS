@@ -317,6 +317,16 @@ function getSettings(s) {
                 $("input[name='t1R']").val(data.t1R);
                 $("input[name='t2B']").val(data.t2B);
                 $("input[name='t2R']").val(data.t2R);
+                $("#nTSets").val(data.nTSets);
+                setupTemps(data.nTSets);
+                $.each(data.tSets,function (index,value) {
+                    $.each(['Active','Su','Mo','Tu','We','Tu','Fr','Sa'],function (i,v) {
+                        $("#tset" + v + index).prop("checked",value[v]==1);
+                    });
+                    $.each(['Start','End','Trip','Rec'],function (i,v) {
+                        $("#tset" + v + index).val(value[v]);
+                    });
+                });
             } else if (s == "batt") {
                 $("input[name='PollFreq']").val(data.PollFreq);
                 $("input[name='Avg']").val(data.Avg);
@@ -583,6 +593,23 @@ function setRelayType() {
     if (val == "B" || val == "T")
         $("#relayDoTherm"+r).show();
     else $("#relayDoTherm"+r).hide();
+}
+
+function setupTemps(tt) {
+    $("#tsets").empty();
+    for (var t=0;t<tt;t++) {
+        var temp = $("#tset").clone();
+        temp.attr({id: "tset"+t});
+        $.each(['Active','Start','End','Trip','Rec','Su','Mo','Tu','We','Th','Fr','Sa'],function (index,value) {
+            temp.find('#tset'+value).attr({id: "tset"+value+t, name: "tset"+value+t});
+        });
+        temp.find("[for]").each(function(index) {
+            var val=$(this).attr("for");
+            $(this).attr({for: val+t});
+        });
+        temp.show();
+        $("#tsets").append(temp);
+    }
 }
 
 function setupRelays(rt) {
