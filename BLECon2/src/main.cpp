@@ -520,7 +520,7 @@ void checkStatus()
             relay[y] = HIGH; // on
           // else leave it as-is
           break;
-        case Relay_Therm:
+        case Relay_Heat:
           uint8_t val=255;
           switch (rp->therm) {
             case 'b': val = st.curBoardTemp;

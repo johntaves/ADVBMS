@@ -22,7 +22,7 @@
 
 char debugstr[200];
 bool emailSetup=false,writeCommSet=false,writeWifiSet=false,writeDispSet=false,writeRelaySet=false;
-uint32_t statusMS=0;
+uint32_t statusMS=0,tempMS=0;
 HTTPClient http;
 atomic_flag taskRunning(0);
 bool OTAInProg = false;
@@ -247,9 +247,7 @@ void limits(AsyncWebServerRequest *request){
         for (int l3=0;l3<LimitConsts::Max3;l3++) {
           char name[5];
           sprintf(name,"%d%d%d%d",l0,l1,l2,l3);
-          if (l0 == LimitConsts::Temp)
-            obj[name] = fromCel(statSets.limits[l0][l1][l2][l3]);
-          else obj[name] = statSets.limits[l0][l1][l2][l3];
+          obj[name] = statSets.limits[l0][l1][l2][l3];
         }
       }
     }
@@ -282,6 +280,7 @@ void relays(AsyncWebServerRequest *request){
       case Relay_Load: rule1["type"] = (rp->doSoC?"LP":"L"); break;
       case Relay_Charge: rule1["type"] = (rp->doSoC?"CP":(rp->fullChg?"CF":"C")); break;
       case Relay_Therm: rule1["type"] = "T";break;
+      case Relay_Heat: rule1["type"] = "H";break;
       case Relay_Slide: rule1["type"] = "S"; break;
       case Relay_Direction: rule1["type"] = "D"; break;
       case Relay_Unused: rule1["type"] = "U"; break;
@@ -294,6 +293,19 @@ void relays(AsyncWebServerRequest *request){
 
   serializeJson(doc, *response);
   request->send(response);
+}
+
+void getRelayType(JsonObject root,uint8_t type,uint8_t type2 = 255) {
+  JsonArray rsArray = root.createNestedArray("relaySettings");
+  for (uint8_t r = 0; r < W_RELAY_TOTAL; r++) {
+    RelaySettings *rp = &relSets.relays[r];
+    if (rp->type != type && rp->type != type2)
+      continue;
+    JsonObject rule1 = rsArray.createNestedObject();
+    rule1["relay"] = r;
+    rule1["name"] = rp->name;
+  }
+
 }
 
 void temps(AsyncWebServerRequest *request)
@@ -311,7 +323,7 @@ void temps(AsyncWebServerRequest *request)
   for (int i=0;i<dispSets.nTSets;i++) {
     JsonObject tset = tSetArr.createNestedObject();
     TempSet* ts = &dispSets.tSets[i];
-    tset["Active"] = ts->Active;
+    tset["Relay"] = ts->relay;
     tset["Trip"] = ts->tripTemp;
     tset["Rec"] = ts->recTemp;
     tset["Start"] = ts->startMin;
@@ -324,6 +336,7 @@ void temps(AsyncWebServerRequest *request)
     tset["Fr"] = ts->Fr;
     tset["Sa"] = ts->Sa;
   }
+  getRelayType(root,Relay_Therm,Relay_Heat);
   serializeJson(doc, *response);
   request->send(response);
 }
@@ -374,16 +387,7 @@ void slides(AsyncWebServerRequest *request){
   AsyncResponseStream *response =
       request->beginResponseStream("application/json");
   DynamicJsonDocument doc(8192);
-  JsonObject root = doc.to<JsonObject>();
-  JsonArray rsArray = root.createNestedArray("relaySettings");
-  for (uint8_t r = 0; r < W_RELAY_TOTAL; r++) {
-    JsonObject rule1 = rsArray.createNestedObject();
-    RelaySettings *rp = &relSets.relays[r];
-    if (rp->type != Relay_Slide)
-      continue;
-    rule1["relay"] = r;
-    rule1["name"] = rp->name;
-  }
+  getRelayType(doc.to<JsonObject>(),Relay_Slide);
 
   serializeJson(doc, *response);
   request->send(response);
@@ -743,8 +747,6 @@ void savetemps(AsyncWebServerRequest *request) {
   for (int i=0;i<dispSets.nTSets && i<NUM_TEMPSETS;i++) {
     char name[30];
     TempSet* ts = &dispSets.tSets[i];
-    sprintf(name,"tsetActive%d",i);
-    ts->Active = request->hasParam(name,true);
     sprintf(name,"tsetSu%d",i);
     ts->Su = request->hasParam(name,true);
     sprintf(name,"tsetMo%d",i);
@@ -759,6 +761,9 @@ void savetemps(AsyncWebServerRequest *request) {
     ts->Fr = request->hasParam(name,true);
     sprintf(name,"tsetSa%d",i);
     ts->Sa = request->hasParam(name,true);
+    sprintf(name,"tsetRelay%d",i);
+    if (request->hasParam(name,true))
+      ts->relay=request->getParam(name, true)->value().toInt();
     sprintf(name,"tsetStart%d",i);
     if (request->hasParam(name,true))
       ts->startMin=request->getParam(name, true)->value().toInt();
@@ -773,6 +778,8 @@ void savetemps(AsyncWebServerRequest *request) {
       ts->recTemp=request->getParam(name, true)->value().toInt();
     Serial.printf("%d\n",ts->startMin);
   }
+  for (int i=dispSets.nTSets;i<NUM_TEMPSETS;i++)
+    dispSets.tSets[i].relay = 255;
   writeDispSet = true;
   sendSuccess(request);
 }
@@ -851,6 +858,7 @@ void saverelays(AsyncWebServerRequest *request) {
         case 'L':rp->type = Relay_Load;break;
         case 'C':rp->type = Relay_Charge; break;
         case 'T':rp->type = Relay_Therm; break;
+        case 'H':rp->type = Relay_Heat; break;
         case 'U':rp->type = Relay_Unused; break;
         case 'D':
           stopSlide();
@@ -1078,6 +1086,15 @@ bool isFromOff(RelaySettings* rs) {
   return false;
 }
 
+void checkTemps()
+{
+  tempMS = millis();
+  for (int i=dispSets.nTSets-1;i>=0;i--) {
+    TempSet* ts = &dispSets.tSets[i];
+    if (ts->relay == 255) continue;
+    
+  }
+}
 void checkStatus()
 {
   statusMS = millis();
@@ -1118,7 +1135,7 @@ void checkStatus()
             relay[y] = HIGH; // on
           // else leave it as-is
           break;
-        case Relay_Therm:
+        case Relay_Heat:
           uint8_t val=255;int minCell = MAX_CELLS;
           switch (rp->therm) {
             case 'b': val = st.curBoardTemp;
@@ -1246,7 +1263,7 @@ void setup() {
     dispSets.t1B=dispSets.t2B=4050;
     dispSets.t1R=dispSets.t2R=47000;
     dispSets.nTSets = 1;
-    dispSets.tSets[0].Active = true;
+    dispSets.tSets[0].relay = 255;
   }
 
   for (int i=0;i<W_RELAY_TOTAL;i++)
@@ -1295,6 +1312,8 @@ void loop() {
   }
   if ((millis() - statusMS) > (CHECKSTATUS+100)) /* +100 to deal with slop so this doesn't trigger if the Status message triggered it */
     checkStatus();
+  if ((millis() - tempMS) > 60000)
+    checkTemps();
 
   ArduinoOTA.handle(); // this does nothing until it is initialized
 }

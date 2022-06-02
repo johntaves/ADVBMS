@@ -16,6 +16,8 @@ body {
 .fullChg { background-color: lightgray;}
 .dumping { background-color: pink;}
 
+.time { width: 6em; }
+
 .rt {
     float: right;
 }

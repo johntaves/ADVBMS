@@ -37,9 +37,10 @@ struct WRelaySettings {
 };
 
 struct TempSet {
+  uint8_t relay;
   uint16_t startMin,endMin;
   int8_t tripTemp,recTemp;
-  uint8_t Active:1,Su:1,Mo:1,Tu:1,We:1,Th:1,Fr:1,Sa:1; 
+  uint8_t Su:1,Mo:1,Tu:1,We:1,Th:1,Fr:1,Sa:1; 
 };
 
 struct DispSettings {

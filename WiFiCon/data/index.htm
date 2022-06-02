@@ -97,17 +97,17 @@
                 <div class="buttonhold"><input type="submit" value="Save Settings" /></div>
             </form>
             <div id="tset" style="display:none">
-                <div><label class="field" for="tsetActive">Active</label><input type="checkbox" id="tsetActive" name="tsetActive"/></div>
+                <div><label class="field" for="tsetActive">Relay:</label><select id="tsetRelay" name="tsetRelay"><option value="255">Inactive</option></select></div>
                 <div>
-                    <label class="field" for="tsetStart">Start Min:</label><input type="number" id="tsetStart" name="tsetStart"/>
-                    <label class="field" for="tsetEnd">End Min:</label><input type="number" id="tsetEnd" name="tsetEnd"/>
+                    <label class="field" for="tsetStart">Start (h:m am):</label><input type="text" class="time" id="tsetStartStr" /> <input type="hidden" id="tsetStart" name="tsetStart"/>
+                    <label class="field" for="tsetEnd">End (h:m am):</label><input type="text" class="time" id="tsetEndStr" /> <input type="hidden" id="tsetEnd" name="tsetEnd"/>
                 </div>
                 <div>
                     <label class="field" for="tsetTrip">Trip:</label><input type="number" id="tsetTrip" name="tsetTrip"/>
                     <label class="field" for="tsetRec">Rec:</label><input type="number" id="tsetRec" name="tsetRec"/>
                 </div>
                 <div>
-                    <label for="tsetSu">Su:</label><input type="checkbox" id="tsetSu" name="tsetSu"/>
+                    <label class="field" for="tsetSu">Su:</label><input type="checkbox" id="tsetSu" name="tsetSu"/>
                     <label for="tsetMo">Mo:</label><input type="checkbox" id="tsetMo" name="tsetMo"/>
                     <label for="tsetTu">Tu:</label><input type="checkbox" id="tsetTu" name="tsetTu"/>
                     <label for="tsetWe">We:</label><input type="checkbox" id="tsetWe" name="tsetWe"/>
@@ -159,6 +159,7 @@
                         <option value="C">Charger</option>
                         <option value="CP">Charger %</option>
                         <option value="CF">Enable Full Charge</option>
+                        <option value="H">Batt Heat</option>
                         <option value="T">Thermostat</option>
                         <option value="D">Direction</option>
                         <option value="S">Slide</option>

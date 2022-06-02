@@ -318,15 +318,7 @@ function getSettings(s) {
                 $("input[name='t2B']").val(data.t2B);
                 $("input[name='t2R']").val(data.t2R);
                 $("#nTSets").val(data.nTSets);
-                setupTemps(data.nTSets);
-                $.each(data.tSets,function (index,value) {
-                    $.each(['Active','Su','Mo','Tu','We','Tu','Fr','Sa'],function (i,v) {
-                        $("#tset" + v + index).prop("checked",value[v]==1);
-                    });
-                    $.each(['Start','End','Trip','Rec'],function (i,v) {
-                        $("#tset" + v + index).val(value[v]);
-                    });
-                });
+                setupTemps(data);
             } else if (s == "batt") {
                 $("input[name='PollFreq']").val(data.PollFreq);
                 $("input[name='Avg']").val(data.Avg);
@@ -584,32 +576,63 @@ function toggleTemp() {
 function setRelayType() {
     var r = $(this).attr("relay");
     var val = $(this).val();
-    if (val == "CP" || val == "LP" || val == "T" || val == "B")
+    if (val == "CP" || val == "LP" || val == "H" || val == "B")
         $("#relayDoSoC"+r).show();
     else $("#relayDoSoC"+r).hide();
     if (val == "L" || val == "LP")
         $("#relayDoFrom"+r).show();
     else $("#relayDoFrom"+r).hide();
-    if (val == "B" || val == "T")
+    if (val == "B" || val == "H")
         $("#relayDoTherm"+r).show();
     else $("#relayDoTherm"+r).hide();
 }
 
-function setupTemps(tt) {
+function setHiddenTime() {
+    var d = new Date("1/1/22 " + $(this).val());
+    var m = (d.getHours() * 60) + d.getMinutes();
+    if (Number.isNaN(m)) {
+        $(this).addClass('dumping');
+        return;
+    }
+    $(this).removeClass('dumping');
+    $("#"+$(this).attr('id').replace('Str','')).val(m);
+}
+
+function setupTemps(data) {
     $("#tsets").empty();
-    for (var t=0;t<tt;t++) {
+    for (var t=0;t<data.nTSets;t++) {
         var temp = $("#tset").clone();
         temp.attr({id: "tset"+t});
-        $.each(['Active','Start','End','Trip','Rec','Su','Mo','Tu','We','Th','Fr','Sa'],function (index,value) {
+        $.each(data.relaySettings,function(ind,val) {
+            temp.find('#tsetRelay').append($(new Option(val.name,val.relay)));
+        });
+        $.each(['Relay','Start','End','StartStr','EndStr','Trip','Rec','Su','Mo','Tu','We','Th','Fr','Sa'],function (index,value) {
             temp.find('#tset'+value).attr({id: "tset"+value+t, name: "tset"+value+t});
         });
         temp.find("[for]").each(function(index) {
             var val=$(this).attr("for");
             $(this).attr({for: val+t});
         });
+    
         temp.show();
         $("#tsets").append(temp);
+        $("#tsetStartStr"+t).blur(setHiddenTime);
+        $("#tsetEndStr"+t).blur(setHiddenTime);
     }
+    $.each(data.tSets,function (index,value) {
+        $.each(['Su','Mo','Tu','We','Tu','Fr','Sa'],function (i,v) {
+            $("#tset" + v + index).prop("checked",value[v]==1);
+        });
+        $.each(['Relay','Trip','Rec'],function (i,v) {
+            $("#tset" + v + index).val(value[v]);
+        });
+        $.each(['Start','End'],function(i,v) {
+            var h = Math.floor(value[v] / 60);
+            var m = value[v] % 60;
+            var pm = Math.floor(h / 12);
+            $("#tset" + v + "Str" + index).val(""+Math.floor(h%12)+":"+m+" "+(pm?"pm":"am"));
+        });
+    });
 }
 
 function setupRelays(rt) {
