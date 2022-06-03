@@ -323,18 +323,13 @@ void temps(AsyncWebServerRequest *request)
   for (int i=0;i<dispSets.nTSets;i++) {
     JsonObject tset = tSetArr.createNestedObject();
     TempSet* ts = &dispSets.tSets[i];
+    tset["Sens"] = ts->sens;
     tset["Relay"] = ts->relay;
     tset["Trip"] = ts->tripTemp;
     tset["Rec"] = ts->recTemp;
     tset["Start"] = ts->startMin;
     tset["End"] = ts->endMin;
-    tset["Su"] = ts->Su;
-    tset["Mo"] = ts->Mo;
-    tset["Tu"] = ts->Tu;
-    tset["We"] = ts->We;
-    tset["Th"] = ts->Th;
-    tset["Fr"] = ts->Fr;
-    tset["Sa"] = ts->Sa;
+    tset["dows"] = ts->dows;
   }
   getRelayType(root,Relay_Therm,Relay_Heat);
   serializeJson(doc, *response);
@@ -747,20 +742,14 @@ void savetemps(AsyncWebServerRequest *request) {
   for (int i=0;i<dispSets.nTSets && i<NUM_TEMPSETS;i++) {
     char name[30];
     TempSet* ts = &dispSets.tSets[i];
-    sprintf(name,"tsetSu%d",i);
-    ts->Su = request->hasParam(name,true);
-    sprintf(name,"tsetMo%d",i);
-    ts->Mo = request->hasParam(name,true);
-    sprintf(name,"tsetTu%d",i);
-    ts->Tu = request->hasParam(name,true);
-    sprintf(name,"tsetWe%d",i);
-    ts->We = request->hasParam(name,true);
-    sprintf(name,"tsetTh%d",i);
-    ts->Th = request->hasParam(name,true);
-    sprintf(name,"tsetFr%d",i);
-    ts->Fr = request->hasParam(name,true);
-    sprintf(name,"tsetSa%d",i);
-    ts->Sa = request->hasParam(name,true);
+    ts->dows = 0;
+    for (int j=0;j<7;j++) {
+      sprintf(name,"tset%d_%d",j,i);
+      ts->dows |= request->hasParam(name,true) ? 1 << j: 0;
+    }
+    sprintf(name,"tsetSens%d",i);
+    if (request->hasParam(name,true))
+      ts->sens=request->getParam(name, true)->value().toInt();
     sprintf(name,"tsetRelay%d",i);
     if (request->hasParam(name,true))
       ts->relay=request->getParam(name, true)->value().toInt();
@@ -776,7 +765,6 @@ void savetemps(AsyncWebServerRequest *request) {
     sprintf(name,"tsetRec%d",i);
     if (request->hasParam(name,true))
       ts->recTemp=request->getParam(name, true)->value().toInt();
-    Serial.printf("%d\n",ts->startMin);
   }
   for (int i=dispSets.nTSets;i<NUM_TEMPSETS;i++)
     dispSets.tSets[i].relay = 255;
@@ -1088,11 +1076,29 @@ bool isFromOff(RelaySettings* rs) {
 
 void checkTemps()
 {
+  struct tm t;
+  Serial.println("CheckT");
+  getLocalTime(&t);
+  int curMin = (t.tm_hour * 60) + t.tm_min;
   tempMS = millis();
   for (int i=dispSets.nTSets-1;i>=0;i--) {
     TempSet* ts = &dispSets.tSets[i];
     if (ts->relay == 255) continue;
-    
+    if (ts->startMin < ts->endMin) {
+      if (!(ts->dows & 1 << t.tm_wday)) continue;
+      if (ts->startMin > curMin || ts->endMin < curMin) continue;
+    } else {
+      if (ts->startMin > curMin && ts->endMin < curMin) continue;
+      if (ts->startMin < curMin && !(ts->dows & 1 << t.tm_wday)) continue;
+      int dow = t.tm_wday - 1;
+      if (dow < 0) dow = 6;
+      if (ts->endMin > curMin && !(ts->dows & 1 << dow)) continue;
+    }
+    // stop looking for this relay, prevent con from getting therm
+    int16_t temp = ts->sens == 1 ? Temp1 : Temp2;
+    if (temp < ts->tripTemp) Serial.println("ON");
+    else if (temp > ts->recTemp) Serial.println("OFF");
+    else Serial.println("NC");
   }
 }
 void checkStatus()
@@ -1273,7 +1279,7 @@ void setup() {
 
   smtpData.setSendCallback(emailCallback);
   startServer();
-  configTime(0,0,"pool.ntp.org");
+  configTzTime("PST8PDT,M3.2.0,M11.1.0","pool.ntp.org");
   AMsg msg;
   msg.cmd = StatQuery;
   BMSWaitFor(&msg,StatSets);
@@ -1312,7 +1318,7 @@ void loop() {
   }
   if ((millis() - statusMS) > (CHECKSTATUS+100)) /* +100 to deal with slop so this doesn't trigger if the Status message triggered it */
     checkStatus();
-  if ((millis() - tempMS) > 60000)
+  if ((millis() - tempMS) > 6000)
     checkTemps();
 
   ArduinoOTA.handle(); // this does nothing until it is initialized
