@@ -17,7 +17,7 @@ body {
 .dumping { background-color: pink;}
 
 .time { width: 6em; }
-
+.tdLab {text-align: right;}
 .rt {
     float: right;
 }

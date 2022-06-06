@@ -42,7 +42,7 @@ DynSetts dynSets;
 StatSetts statSets;
 DispSettings dispSets;
 WRelaySettings relSets;
-int16_t Temp1,Temp2;
+int8_t Temp1,Temp2;
 
 char spb[1024];
 
@@ -50,6 +50,7 @@ bool sendEmail = false,inAlertState = true;
 AsyncWebServer server(80);
 SMTPData smtpData;
 uint8_t previousRelayState[W_RELAY_TOTAL];
+uint8_t previousHeaterOnSource[W_RELAY_TOTAL];
 
 volatile uint32_t slideStart;
 volatile int32_t slidePos[W_RELAY_TOTAL];
@@ -123,6 +124,7 @@ void clearRelays() {
   for (int i=0;i<W_RELAY_TOTAL;i++) {
     digitalWrite(relayPins[i], LOW);
     previousRelayState[i] = LOW;
+    previousHeaterOnSource[i] = Relay_Unused;
   }
 }
 
@@ -184,8 +186,9 @@ int toCel(String val) {
   return (val.toInt() - 32) * 5/9;
 }
 
-int fromCel(int c) {
-  if (dispSets.doCelsius || c == -300)
+int fromCel(int8_t c) {
+  if (c == INT8_MIN) return -300;
+  if (dispSets.doCelsius)
     return c;
   return c*9/5+32;
 }
@@ -288,7 +291,6 @@ void relays(AsyncWebServerRequest *request){
     
     rule1["trip"] = rp->trip;
     rule1["rec"] = rp->rec;
-    rule1["therm"] = std::string(1, rp->therm);
   }
 
   serializeJson(doc, *response);
@@ -873,11 +875,6 @@ void saverelays(AsyncWebServerRequest *request) {
     if (request->hasParam(name, true))
       rp->rec = request->getParam(name, true)->value().toInt();
 
-    sprintf(name,"relayTherm%d",relay);
-    if (request->hasParam(name, true)) {
-      request->getParam(name, true)->value().toCharArray(type,sizeof(type));
-      rp->therm = type[0];
-    }
   }
   if (request->hasParam("slideMS", true))
     statSets.slideMS = request->getParam("slideMS", true)->value().toInt();
@@ -1074,14 +1071,39 @@ bool isFromOff(RelaySettings* rs) {
   return false;
 }
 
+struct ThermState {
+  bool thermAct;
+  int8_t heat,therm; // 1 heat, 0 no change, -1 off
+  int8_t hVal,tVal;
+  int8_t cell;
+};
 void checkTemps()
 {
   struct tm t;
+  ThermState thermState[W_RELAY_TOTAL];
   Serial.println("CheckT");
   getLocalTime(&t);
   int curMin = (t.tm_hour * 60) + t.tm_min;
   tempMS = millis();
-  for (int i=dispSets.nTSets-1;i>=0;i--) {
+  for (int y=0;y<W_RELAY_TOTAL;y++) {
+    RelaySettings *rp = &relSets.relays[y];
+    ThermState* tsp = &thermState[y];
+    tsp->heat = tsp->therm = 0;
+    tsp->cell = MAX_CELLS;
+    tsp->thermAct = false;
+    if (rp->type != Relay_Heat || rp->type != Relay_Therm) 
+      continue;
+    if (rp->type == Relay_Heat) {
+      for (int i=0;i<dynSets.nCells;i++)
+        if (st.cells[i].exTemp < tsp->hVal && st.cells[i].conn && st.cells[i].volts) { // find lowest temp
+          tsp->hVal = st.cells[i].exTemp;
+          tsp->cell = i;
+        }
+      if (tsp->hVal < rp->trip) tsp->heat = 1;
+      else if (tsp->hVal > rp->rec) tsp->heat = -1;
+    }
+  }
+  for (int i=dispSets.nTSets-1;i>=0;i--) { // work backwards to find first active on that relay
     TempSet* ts = &dispSets.tSets[i];
     if (ts->relay == 255) continue;
     if (ts->startMin < ts->endMin) {
@@ -1094,13 +1116,60 @@ void checkTemps()
       if (dow < 0) dow = 6;
       if (ts->endMin > curMin && !(ts->dows & 1 << dow)) continue;
     }
-    // stop looking for this relay, prevent con from getting therm
-    int16_t temp = ts->sens == 1 ? Temp1 : Temp2;
-    if (temp < ts->tripTemp) Serial.println("ON");
-    else if (temp > ts->recTemp) Serial.println("OFF");
-    else Serial.println("NC");
+    ThermState* tsp = &thermState[ts->relay];
+    if (tsp->thermAct) continue;
+    tsp->thermAct = true;
+    tsp->tVal = ts->sens == 1 ? Temp1 : Temp2;
+    if (tsp->tVal < ts->tripTemp) tsp->therm = 1;
+    else if (tsp->tVal > ts->recTemp) tsp->therm = -1;
+  }
+  for (int y=0;y<W_RELAY_TOTAL;y++) {   // turn off any that were not active
+    if (relSets.relays[y].type == Relay_Therm && !thermState[y].thermAct)
+      thermState[y].therm = -1;
+  }
+  for (int8_t y = 0; y < W_RELAY_TOTAL; y++)
+  {
+    ThermState* tsp = &thermState[y];
+    if (relSets.relays[y].off) {
+      digitalWrite(relayPins[y], LOW);
+      previousHeaterOnSource[y] = Relay_Unused;
+      previousRelayState[y] = LOW;
+    } else if (previousRelayState[y] == LOW) {
+      if (tsp->heat > 0 || tsp->therm > 0) {
+        Event* ep = NextEvent();
+        ep->msg.cmd = HeaterOn;
+        if (tsp->heat > 0) {
+          ep->msg.cell = tsp->cell;
+          ep->msg.tC = tsp->hVal;
+          previousHeaterOnSource[y] = Relay_Heat;
+        } else {
+          ep->msg.cell = MAX_CELLS;
+          ep->msg.tC = tsp->tVal;
+          previousHeaterOnSource[y] = Relay_Therm;
+        }
+        digitalWrite(relayPins[y], HIGH);
+        Serial.printf("T:%d on prev: %d, %d\n",y,previousRelayState[y],y);
+        previousRelayState[y] = HIGH;
+      }
+    } else if ((tsp->heat < 0 && tsp->therm < 1 && previousHeaterOnSource[y] != Relay_Therm)
+         || (tsp->therm < 0 && tsp->heat < 1 && previousHeaterOnSource[y] != Relay_Heat)) {
+      Event* ep = NextEvent();
+      ep->msg.cmd = HeaterOff;
+      if (tsp->heat < 0) {
+        ep->msg.cell = tsp->cell;
+        ep->msg.tC = tsp->hVal;
+      } else {
+        ep->msg.cell = MAX_CELLS;
+        ep->msg.tC = tsp->tVal;
+      }
+      previousHeaterOnSource[y] = Relay_Unused;
+      digitalWrite(relayPins[y], LOW);
+        Serial.printf("T:%d off prev: %d, %d\n",y,previousRelayState[y],y);
+      previousRelayState[y] = LOW;
+    }
   }
 }
+
 void checkStatus()
 {
   statusMS = millis();
@@ -1110,7 +1179,9 @@ void checkStatus()
     delay(dynSets.cellSets.delay);
   uint16_t vp;
   Temp1 = BMSReadTemp(TEMP1,false,statSets.bdVolts,dispSets.t1B,dispSets.t1R,51000,dynSets.cellSets.cnt,&vp);
+  Serial.printf("1: %d %d, ",vp,Temp1);
   Temp2 = BMSReadTemp(TEMP2,false,statSets.bdVolts,dispSets.t2B,dispSets.t2R,51000,dynSets.cellSets.cnt,&vp);
+  Serial.printf("2: %d %d\n",vp,Temp2);
   if (!dynSets.cellSets.resPwrOn)
     digitalWrite(RESISTOR_PWR,LOW);
 
@@ -1124,7 +1195,7 @@ void checkStatus()
       relay[y] = LOW;
     else {
       switch (rp->type) {
-        default: case Relay_Connect: relay[y] = LOW; break; // don't put this on this CPU
+        case Relay_Connect: relay[y] = LOW; break; // don't put this on this CPU
         case Relay_Load:
           if (isFromOff(rp))
             relay[y] = HIGH;
@@ -1141,30 +1212,6 @@ void checkStatus()
             relay[y] = HIGH; // on
           // else leave it as-is
           break;
-        case Relay_Heat:
-          uint8_t val=255;int minCell = MAX_CELLS;
-          switch (rp->therm) {
-            case 'b': val = st.curBoardTemp;
-              break;
-            case 'c':
-              for (int i=0;i<dynSets.nCells;i++)
-                if (st.cells[i].exTemp < val && st.cells[i].conn && st.cells[i].volts) {
-                  val = st.cells[i].exTemp;
-                  minCell = i;
-                }
-              break;
-          }
-          if (val < rp->trip)
-            relay[y] = HIGH;
-          else if (val > rp->rec)
-            relay[y] = LOW;
-          if (previousRelayState[y] != relay[y]) {
-            Event* ep = NextEvent();
-            ep->msg.cmd = relay[y] == HIGH ? HeaterOn : HeaterOff;
-            ep->msg.cell = minCell;
-            ep->msg.tC = val;
-          }
-          break;
       }
     }
   }
@@ -1174,6 +1221,7 @@ void checkStatus()
     { // no effect on slide and dir, because previous was set above to match
       digitalWrite(relayPins[n], relay[n]);
       previousRelayState[n] = relay[n];
+      Serial.printf("Chg: %d to %d\n",n,previousRelayState[n]);
     }
   }
   watchDog.once_ms(CHECKSTATUS+WATCHDOGSLOP,doWatchDog);

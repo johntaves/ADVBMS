@@ -14,8 +14,8 @@
         <div id="info">
             <div>
                 <div id="BoardTemp" class="stat rt"><div class="h">Board&deg;</div><a href="" class="v"></a></div>
-                <div id="Temp2" class="stat rt"><div class="h">Re&deg;</div><div class="v"></div></div>
-                <div id="Temp1" class="stat rt"><div class="h">Fr&deg;</div><div class="v"></div></div>
+                <div id="Temp2" class="stat rt"><div class="h">Re&deg; 2</div><div class="v"></div></div>
+                <div id="Temp1" class="stat rt"><div class="h">Fr&deg; 1</div><div class="v"></div></div>
                 <div id="celltemp" class="stat rt"><div class="h">Cell T</div><div class="v highlight"></div></div>
                 <div id="cellvolt" class="stat"><div class="h">Cell V</div><div class="v highlight"></div></div>
                 <div id="packcurrent" class="stat"><div class="h">Pack (A)</div><div class="v"></div></div>
@@ -79,44 +79,43 @@
         </div>
         <div id="temps">
             <form method="POST" action="savetemps" autocomplete="off">
-                <div><label class="field" for="t1B">Temp 1 B:</label>
-                    <input type="number" name="t1B" id="t1B" step="1" >
-                    <label class="field" for="t1R">Ohms@25&deg;:</label>
-                    <input type="number" name="t1R" id="t1R" step="1" >
-                </div>
-                <div><label class="field" for="t2B">Temp 2 B:</label>
-                    <input type="number" name="t2B" id="t2B" step="1" >
-                    <label class="field" for="t2R">Ohms@25&deg;:</label>
-                    <input type="number" name="t2R" id="t2R" step="1" >
-                </div>
-                <div>
-                    <label class="field" for="nTSets">Num:</label>
-                    <input type="number" name="nTSets" id="nTSets" step="1" min="0" max="10" >
-                </div>
-                <div id="tsets"></div>
-                <div class="buttonhold"><input type="submit" value="Save Settings" /></div>
+                <table>
+                <tr><td class="tdLab">Temp 1 B:</td><td><input type="number" name="t1B" id="t1B" step="1" ></td>
+                    <td class="tdLab">Ohms@25&deg;:</td><td><input type="number" name="t1R" id="t1R" step="1" ></td>
+                </tr>
+                <tr><td class="tdLab">Temp 2 B:</td><td><input type="number" name="t2B" id="t2B" step="1" ></td>
+                    <td class="tdLab">Ohms@25&deg;:</td><td><input type="number" name="t2R" id="t2R" step="1" ></td>
+                </tr>
+                <tr id="lastTempRow">
+                    <td class="tdLab">Num:</td><td><input type="number" name="nTSets" id="nTSets" step="1" min="0" max="10" ></td>
+                </tr>
+                <tr><td colspan="4"><input type="submit" value="Save Settings" /></td></tr>
+                </table>
             </form>
-            <div id="tset" style="display:none">
-                <div><label class="field" for="tsetActive">Relay:</label><select id="tsetRelay" name="tsetRelay"><option value="255">Inactive</option></select>
-                <label class="field" for="tsetSens">Sensor:</label><select id="tsetSens" name="tsetSens"><option value="1">1</option><option value="2">2</option> </select> </div>
-                <div>
-                    <label class="field" for="tsetStart">Start (h:m am):</label><input type="text" class="time" id="tsetStartStr" /> <input type="hidden" id="tsetStart" name="tsetStart"/>
-                    <label class="field" for="tsetEnd">End (h:m am):</label><input type="text" class="time" id="tsetEndStr" /> <input type="hidden" id="tsetEnd" name="tsetEnd"/>
-                </div>
-                <div>
-                    <label class="field" for="tsetTrip">Trip:</label><input type="number" id="tsetTrip" name="tsetTrip"/>
-                    <label class="field" for="tsetRec">Rec:</label><input type="number" id="tsetRec" name="tsetRec"/>
-                </div>
-                <div>
-                    <label class="field" for="tset0_">Su:</label><input type="checkbox" id="tset0_" name="tset0_"/>
-                    <label for="tset1_">Mo:</label><input type="checkbox" id="tset1_" name="tset1_"/>
-                    <label for="tset2_">Tu:</label><input type="checkbox" id="tset2_" name="tset2_"/>
-                    <label for="tset3_">We:</label><input type="checkbox" id="tset3_" name="tset3_"/>
-                    <label for="tset4_">Th:</label><input type="checkbox" id="tset4_" name="tset4_"/>
-                    <label for="tset5_">Fr:</label><input type="checkbox" id="tset5_" name="tset5_"/>
-                    <label for="tset6_">Sa:</label><input type="checkbox" id="tset6_" name="tset6_"/>
-                </div>
-            </div>
+            <table id="thermTemp" style="display: none">
+            <tr><td colspan="4"><hr/></td></tr>
+            <tr><td class="tdLab">Relay:</td><td><select id="tsetRelay" name="tsetRelay"><option value="255">Inactive</option></select></td>
+                <td class="tdLab">Sensor:</td><td><select id="tsetSens" name="tsetSens"><option value="1">Fr 1</option><option value="2">Re 2</option> </select></td>
+            </tr>
+            <tr>
+                <td class="tdLab">Start (h:m am):</td><td><input type="text" class="time" id="tsetStartStr" /> <input type="hidden" id="tsetStart" name="tsetStart"/></td>
+                <td class="tdLab">End (h:m am):</td><td><input type="text" class="time" id="tsetEndStr" /> <input type="hidden" id="tsetEnd" name="tsetEnd"/></td>
+            </tr>
+            <tr>
+                <td class="tdLab">Trip:</td><td><input type="number" id="tsetTrip" name="tsetTrip"/></td>
+                <td class="tdLab">Rec:</td><td><input type="number" id="tsetRec" name="tsetRec"/></td>
+            </tr>
+            <tr><td colspan="4">
+                Su:<input type="checkbox" id="tset0_" name="tset0_"/>&nbsp;&nbsp;
+                Mo:<input type="checkbox" id="tset1_" name="tset1_"/>&nbsp;&nbsp;
+                Tu:<input type="checkbox" id="tset2_" name="tset2_"/>&nbsp;&nbsp;
+                We:<input type="checkbox" id="tset3_" name="tset3_"/>&nbsp;&nbsp;
+                Th:<input type="checkbox" id="tset4_" name="tset4_"/>&nbsp;&nbsp;
+                Fr:<input type="checkbox" id="tset5_" name="tset5_"/>&nbsp;&nbsp;
+                Sa:<input type="checkbox" id="tset6_" name="tset6_"/>&nbsp;&nbsp;
+            </td>
+            </tr>
+            </table>
         </div>
         <div id="limits">
             <form method="POST" action="savelimits" autocomplete="off">
@@ -172,9 +171,7 @@
                         <input type="number" min="0" max="100" step="1" name="relayRec" id="relayRec" value="40"></span>
                     <span id="relayDoFrom"><label for="relayFrom">From:</label>
                         <input type="text" name="relayFrom" id="relayFrom" value=""></span>
-                    <span id="relayDoTherm"><label for="relayTherm">Temp:</label>
-                        <select id="relayTherm" name="relayTherm"><option value="b">Board Temp</option><option value="c">Cell Temp</option></select></span>
-                                </div>
+                </div>
                 <div><label for="slideMS">Slide time (ms):</label><input type="number" name="slideMS" id="slideMS" min="10000" max="60000"></div>
                 <div class="buttonhold"><input type="submit" value="Save Settings" /></div>
             </form>

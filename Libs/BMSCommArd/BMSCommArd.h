@@ -84,7 +84,7 @@ enum {
 
 struct Cells {
   uint16_t volts:14,conn:1,dumping:1;
-  uint8_t exTemp,bdTemp;
+  int8_t exTemp,bdTemp;
 } __attribute__((packed));
 
 struct BMSStatus {
@@ -117,7 +117,6 @@ struct RelaySettings {
   char name[16],from[16];
   bool off,doSoC,fullChg;
   uint8_t type,trip,rec;
-  char therm;
 };
 
 struct StatSetts {

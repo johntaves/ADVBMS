@@ -364,7 +364,6 @@ function getSettings(s) {
                     setRelayType.call($("#relayType" + index).val(value.type));
                     $("#relayTrip" + index).val(value.trip);
                     $("#relayRec" + index).val(value.rec);
-                    $("#relayTherm" + index).val(value.therm);
                 });
             }
         }).fail(function () { }
@@ -582,9 +581,6 @@ function setRelayType() {
     if (val == "L" || val == "LP")
         $("#relayDoFrom"+r).show();
     else $("#relayDoFrom"+r).hide();
-    if (val == "B" || val == "H")
-        $("#relayDoTherm"+r).show();
-    else $("#relayDoTherm"+r).hide();
 }
 
 function setHiddenTime() {
@@ -599,10 +595,10 @@ function setHiddenTime() {
 }
 
 function setupTemps(data) {
-    $("#tsets").empty();
-    for (var t=0;t<data.nTSets;t++) {
-        var temp = $("#tset").clone();
-        temp.attr({id: "tset"+t});
+    $(".thermLive").remove();
+    for (var t=data.nTSets-1;t>=0;t--) {
+        var temp = $("#thermTemp").clone();
+        temp.find("tr").addClass("thermLive")
         $.each(data.relaySettings,function(ind,val) {
             temp.find('#tsetRelay').append($(new Option(val.name,val.relay)));
         });
@@ -613,9 +609,7 @@ function setupTemps(data) {
             var val=$(this).attr("for");
             $(this).attr({for: val+t});
         });
-    
-        temp.show();
-        $("#tsets").append(temp);
+        temp.find("tr").insertAfter("#lastTempRow");
         $("#tsetStartStr"+t).blur(setHiddenTime);
         $("#tsetEndStr"+t).blur(setHiddenTime);
     }
@@ -643,9 +637,9 @@ function setupRelays(rt) {
         temp.attr({id: "relay"+rel});
         temp.find("[for='relayName']").text("J"+rel+":");
         if (rel < 8) {
-            temp.find("#relayType option[value='S'],#relayType option[value='D']").hide();
+            temp.find("#relayType option[value='S'],#relayType option[value='D'],#relayType option[value='T']").hide();
         }
-        $.each(['Name','DoSoC','Type','Trip','Rec','Therm','DoFrom','From','DoTherm'],function (index,value) {
+        $.each(['Name','DoSoC','Type','Trip','Rec','DoFrom','From'],function (index,value) {
             temp.find('#relay'+value).attr({id: "relay"+value+rel, name: "relay"+value+rel});
         });
         temp.find("[for]").each(function(index) {

@@ -521,20 +521,12 @@ void checkStatus()
           // else leave it as-is
           break;
         case Relay_Heat:
-          uint8_t val=255;
-          switch (rp->therm) {
-            case 'b': val = st.curBoardTemp;
-              break;
-            case 'c':
-              for (int i=0;i<dynSets.nCells;i++)
-                if (st.cells[i].exTemp < val && st.cells[i].conn && st.cells[i].volts)
-                  val = st.cells[i].exTemp;
-              break;
-          }
-          if (val < rp->trip)
-            relay[y] = HIGH;
-          else if (val > rp->rec)
-            relay[y] = LOW;
+          int16_t val=255;
+          for (int i=0;i<dynSets.nCells;i++)
+            if (st.cells[i].exTemp < val && st.cells[i].conn && st.cells[i].volts)
+              val = st.cells[i].exTemp;
+          if (val < rp->trip) relay[y] = HIGH;
+          else if (val > rp->rec) relay[y] = LOW;
           break;
       }
   }

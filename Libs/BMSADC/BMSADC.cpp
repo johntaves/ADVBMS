@@ -23,16 +23,16 @@ uint32_t BMSReadVoltage(adc1_channel_t readPin,uint32_t cnt) {
   return av / cnt;
 }
 
-int16_t BMSReadTemp(adc1_channel_t tPin,bool highside, uint32_t Vs,int bCoef
+int8_t BMSReadTemp(adc1_channel_t tPin,bool highside, uint32_t Vs,int bCoef
         ,uint32_t Ro,uint32_t R1,uint8_t cnt,uint16_t* vp=NULL) { // Ro is the thermistor resistance at 25c
   uint32_t Vout = BMSReadVoltage(tPin,cnt);
   if (vp) *vp = Vout;
-  if (highside && Vout < 100) return -300;
-  if (!highside && Vout > (Vs-100)) return -300;
+  if (highside && Vout < 100) return INT8_MIN;
+  if (!highside && Vout > (Vs-100)) return INT8_MIN;
   uint32_t Rt;
   if (highside) Rt = (R1 * (Vs - Vout))/Vout;
   else Rt = R1 * Vout / (Vs - Vout);
   double T = 1/(1/298.15d + log(Rt/(double)Ro)/(double)bCoef);
 
-  return (int16_t)(T-273.15);
+  return (int8_t)(T-273.15);
 }
