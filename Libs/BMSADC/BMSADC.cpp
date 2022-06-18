@@ -19,12 +19,11 @@ uint32_t BMSReadVoltage(adc1_channel_t readPin,uint32_t cnt) {
     return 0;
   for (int i=0;i<cnt;i++)
     av += esp_adc_cal_raw_to_voltage(adc1_get_raw(readPin), &adc_chars);
-  //Serial.printf("rv: %d\n",av / cnt);
   return av / cnt;
 }
 
 int8_t BMSReadTemp(adc1_channel_t tPin,bool highside, uint32_t Vs,int bCoef
-        ,uint32_t Ro,uint32_t R1,uint8_t cnt,uint16_t* vp=NULL) { // Ro is the thermistor resistance at 25c
+        ,uint32_t Ro,uint32_t R1,uint8_t cnt,uint16_t* vp=NULL,uint32_t* rtp=NULL,double* Tp=NULL) { // Ro is the thermistor resistance at 25c
   uint32_t Vout = BMSReadVoltage(tPin,cnt);
   if (vp) *vp = Vout;
   if (highside && Vout < 100) return INT8_MIN;
@@ -34,5 +33,7 @@ int8_t BMSReadTemp(adc1_channel_t tPin,bool highside, uint32_t Vs,int bCoef
   else Rt = R1 * Vout / (Vs - Vout);
   double T = 1/(1/298.15d + log(Rt/(double)Ro)/(double)bCoef);
 
+  if (rtp) *rtp = Rt;
+  if (Tp) *Tp = T;
   return (int8_t)(T-273.15);
 }

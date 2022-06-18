@@ -1081,7 +1081,6 @@ void checkTemps()
 {
   struct tm t;
   ThermState thermState[W_RELAY_TOTAL];
-  Serial.println("CheckT");
   getLocalTime(&t);
   int curMin = (t.tm_hour * 60) + t.tm_min;
   tempMS = millis();
@@ -1091,7 +1090,7 @@ void checkTemps()
     tsp->heat = tsp->therm = 0;
     tsp->cell = MAX_CELLS;
     tsp->thermAct = false;
-    if (rp->type != Relay_Heat || rp->type != Relay_Therm) 
+    if (rp->type != Relay_Heat && rp->type != Relay_Therm) 
       continue;
     if (rp->type == Relay_Heat) {
       for (int i=0;i<dynSets.nCells;i++)
@@ -1148,7 +1147,7 @@ void checkTemps()
           previousHeaterOnSource[y] = Relay_Therm;
         }
         digitalWrite(relayPins[y], HIGH);
-        Serial.printf("T:%d on prev: %d, %d\n",y,previousRelayState[y],y);
+    //    Serial.printf("T:%d on prev: %d, %d\n",y,previousRelayState[y],y);
         previousRelayState[y] = HIGH;
       }
     } else if ((tsp->heat < 0 && tsp->therm < 1 && previousHeaterOnSource[y] != Relay_Therm)
@@ -1164,7 +1163,7 @@ void checkTemps()
       }
       previousHeaterOnSource[y] = Relay_Unused;
       digitalWrite(relayPins[y], LOW);
-        Serial.printf("T:%d off prev: %d, %d\n",y,previousRelayState[y],y);
+ //       Serial.printf("T:%d off prev: %d, %d\n",y,previousRelayState[y],y);
       previousRelayState[y] = LOW;
     }
   }
@@ -1178,10 +1177,12 @@ void checkStatus()
   if (dynSets.cellSets.delay)
     delay(dynSets.cellSets.delay);
   uint16_t vp;
-  Temp1 = BMSReadTemp(TEMP1,false,statSets.bdVolts,dispSets.t1B,dispSets.t1R,51000,dynSets.cellSets.cnt,&vp);
-  Serial.printf("1: %d %d, ",vp,Temp1);
+  uint32_t rt;
+  double T;
+  Temp1 = BMSReadTemp(TEMP1,false,statSets.bdVolts,dispSets.t1B,dispSets.t1R,51000,dynSets.cellSets.cnt,&vp,&rt,&T);
+//  Serial.printf("1: %d %d %d %f, ",vp,Temp1,rt,T);
   Temp2 = BMSReadTemp(TEMP2,false,statSets.bdVolts,dispSets.t2B,dispSets.t2R,51000,dynSets.cellSets.cnt,&vp);
-  Serial.printf("2: %d %d\n",vp,Temp2);
+//  Serial.printf("2: %d %d\n",vp,Temp2);
   if (!dynSets.cellSets.resPwrOn)
     digitalWrite(RESISTOR_PWR,LOW);
 
