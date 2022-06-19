@@ -1034,23 +1034,23 @@ struct ThermState {
   int8_t hVal,tVal;
   int8_t cell;
 };
+ThermState thermState[W_RELAY_TOTAL];
 void checkTemps()
 {
   tempMS = millis();
   digitalWrite(RESISTOR_PWR,HIGH);
   if (dynSets.cellSets.delay)
     delay(dynSets.cellSets.delay);
-  uint16_t vp;
-  uint32_t rt;
-  double T;
-  Temp1 = BMSReadTemp(TEMP1,false,statSets.bdVolts,dispSets.t1B,dispSets.t1R,51000,dynSets.cellSets.cnt,&vp,&rt,&T);
+//  uint16_t vp;
+//  uint32_t rt;
+//  double T;
+  Temp1 = BMSReadTemp(TEMP1,false,statSets.bdVolts,dispSets.t1B,dispSets.t1R,51000,dynSets.cellSets.cnt);
 //  Serial.printf("1: %d %d %d %f, ",vp,Temp1,rt,T);
-  Temp2 = BMSReadTemp(TEMP2,false,statSets.bdVolts,dispSets.t2B,dispSets.t2R,51000,dynSets.cellSets.cnt,&vp);
+  Temp2 = BMSReadTemp(TEMP2,false,statSets.bdVolts,dispSets.t2B,dispSets.t2R,51000,dynSets.cellSets.cnt);
 //  Serial.printf("2: %d %d\n",vp,Temp2);
   if (!dynSets.cellSets.resPwrOn)
     digitalWrite(RESISTOR_PWR,LOW);
   struct tm t;
-  ThermState thermState[W_RELAY_TOTAL];
   getLocalTime(&t);
   int curMin = (t.tm_hour * 60) + t.tm_min;
   if (t.tm_year < 100)
@@ -1061,9 +1061,9 @@ void checkTemps()
     tsp->heat = tsp->therm = 0;
     tsp->cell = MAX_CELLS;
     tsp->thermAct = false;
-    if (rp->type != Relay_Heat && rp->type != Relay_Therm) 
-      continue;
+
     if (rp->type == Relay_Heat) {
+      tsp->hVal = INT8_MAX;
       for (int i=0;i<dynSets.nCells;i++)
         if (st.cells[i].exTemp < tsp->hVal && st.cells[i].conn && st.cells[i].volts) { // find lowest temp
           tsp->hVal = st.cells[i].exTemp;
@@ -1108,6 +1108,12 @@ void checkTemps()
     ThermState* tsp = &thermState[y];
     if (rp->off) {
       digitalWrite(relayPins[y], LOW);
+      if (previousRelayState[y] == HIGH) {
+        Event *ep = NextEvent();
+        ep->msg.cmd = HeaterOff;
+        ep->msg.amps = previousHeaterOnSource[y];
+        ep->msg.cell = MAX_CELLS;
+      }
       previousHeaterOnSource[y] = Relay_Unused;
       previousRelayState[y] = LOW;
     } else if (previousRelayState[y] == LOW) {
@@ -1117,10 +1123,12 @@ void checkTemps()
         if (tsp->heat > 0) {
           ep->msg.cell = tsp->cell;
           ep->msg.tC = tsp->hVal;
+          ep->msg.amps = Relay_Heat;
           previousHeaterOnSource[y] = Relay_Heat;
         } else {
           ep->msg.cell = MAX_CELLS;
           ep->msg.tC = tsp->tVal;
+          ep->msg.amps = Relay_Therm;
           previousHeaterOnSource[y] = Relay_Therm;
         }
         digitalWrite(relayPins[y], HIGH);
@@ -1131,7 +1139,8 @@ void checkTemps()
          || (tsp->therm < 0 && tsp->heat < 1 && previousHeaterOnSource[y] != Relay_Heat)) {
       Event* ep = NextEvent();
       ep->msg.cmd = HeaterOff;
-      if (tsp->heat < 0) {
+      ep->msg.amps = previousHeaterOnSource[y];
+      if (previousHeaterOnSource[y] == Relay_Heat) {
         ep->msg.cell = tsp->cell;
         ep->msg.tC = tsp->hVal;
       } else {
