@@ -25,7 +25,6 @@ bool emailSetup=false,writeCommSet=false,writeWifiSet=false,writeDispSet=false,w
 uint32_t statusMS=0,tempMS=0;
 HTTPClient http;
 atomic_flag taskRunning(0);
-bool OTAInProg = false;
 Ticker watchDog,slider;
 
 time_t lastEventTime=0;
@@ -76,48 +75,6 @@ Event* NextEvent(EventMsg* mp = nullptr) {
   ep->when = time(nullptr);
   lastEventTime = ep->when;
   return ep;
-}
-
-void InitOTA() {
-    // Port defaults to 3232
-  // ArduinoOTA.setPort(3232);
-
-  // Hostname defaults to esp3232-[MAC]
-  // ArduinoOTA.setHostname("myesp32");
-
-  // No authentication by default
-  // ArduinoOTA.setPassword("admin");
-
-  // Password can be set with it's md5 value as well
-  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
-  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
-  ArduinoOTA
-    .onStart([]() {
-      String type;
-      if (ArduinoOTA.getCommand() == U_FLASH)
-        type = "sketch";
-      else // U_SPIFFS
-        type = "filesystem";
-      OTAInProg = true;
-      // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-      Serial.println("Start updating " + type);
-    })
-    .onEnd([]() {
-      Serial.println("\nEnd");
-    })
-    .onProgress([](unsigned int progress, unsigned int total) {
-      Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-    })
-    .onError([](ota_error_t error) {
-      Serial.printf("Error[%u]: ", error);
-      if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-      else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-      else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-      else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-      else if (error == OTA_END_ERROR) Serial.println("End Failed");
-    });
-
-  ArduinoOTA.begin();
 }
 
 void clearRelays() {
@@ -639,7 +596,7 @@ void fillStatusDoc(JsonVariant root) {
   root["uptimew"] = getUpTimeStr(millis(),milliRolls);
   root["uptimec"] = getUpTimeStr(st.lastMillis,st.milliRolls);
   root["now"]=time(nullptr);
-  root["version"] = "V: 0.6";
+  root["version"] = "V: 1.0";
   root["debugstr"] = debugstr;
   if (lastEventTime)
     root["lastEventTime"] = lastEventTime;
@@ -1079,11 +1036,25 @@ struct ThermState {
 };
 void checkTemps()
 {
+  tempMS = millis();
+  digitalWrite(RESISTOR_PWR,HIGH);
+  if (dynSets.cellSets.delay)
+    delay(dynSets.cellSets.delay);
+  uint16_t vp;
+  uint32_t rt;
+  double T;
+  Temp1 = BMSReadTemp(TEMP1,false,statSets.bdVolts,dispSets.t1B,dispSets.t1R,51000,dynSets.cellSets.cnt,&vp,&rt,&T);
+//  Serial.printf("1: %d %d %d %f, ",vp,Temp1,rt,T);
+  Temp2 = BMSReadTemp(TEMP2,false,statSets.bdVolts,dispSets.t2B,dispSets.t2R,51000,dynSets.cellSets.cnt,&vp);
+//  Serial.printf("2: %d %d\n",vp,Temp2);
+  if (!dynSets.cellSets.resPwrOn)
+    digitalWrite(RESISTOR_PWR,LOW);
   struct tm t;
   ThermState thermState[W_RELAY_TOTAL];
   getLocalTime(&t);
   int curMin = (t.tm_hour * 60) + t.tm_min;
-  tempMS = millis();
+  if (t.tm_year < 100)
+    return;
   for (int y=0;y<W_RELAY_TOTAL;y++) {
     RelaySettings *rp = &relSets.relays[y];
     ThermState* tsp = &thermState[y];
@@ -1123,13 +1094,19 @@ void checkTemps()
     else if (tsp->tVal > ts->recTemp) tsp->therm = -1;
   }
   for (int y=0;y<W_RELAY_TOTAL;y++) {   // turn off any that were not active
-    if (relSets.relays[y].type == Relay_Therm && !thermState[y].thermAct)
+    RelaySettings *rp = &relSets.relays[y];
+    if (rp->type != Relay_Heat && rp->type != Relay_Therm) 
+      continue;
+    if (!thermState[y].thermAct)
       thermState[y].therm = -1;
   }
   for (int8_t y = 0; y < W_RELAY_TOTAL; y++)
   {
+    RelaySettings *rp = &relSets.relays[y];
+    if (rp->type != Relay_Heat && rp->type != Relay_Therm) 
+      continue;
     ThermState* tsp = &thermState[y];
-    if (relSets.relays[y].off) {
+    if (rp->off) {
       digitalWrite(relayPins[y], LOW);
       previousHeaterOnSource[y] = Relay_Unused;
       previousRelayState[y] = LOW;
@@ -1173,18 +1150,6 @@ void checkStatus()
 {
   statusMS = millis();
   uint8_t relay[W_RELAY_TOTAL];
-  digitalWrite(RESISTOR_PWR,HIGH);
-  if (dynSets.cellSets.delay)
-    delay(dynSets.cellSets.delay);
-  uint16_t vp;
-  uint32_t rt;
-  double T;
-  Temp1 = BMSReadTemp(TEMP1,false,statSets.bdVolts,dispSets.t1B,dispSets.t1R,51000,dynSets.cellSets.cnt,&vp,&rt,&T);
-//  Serial.printf("1: %d %d %d %f, ",vp,Temp1,rt,T);
-  Temp2 = BMSReadTemp(TEMP2,false,statSets.bdVolts,dispSets.t2B,dispSets.t2R,51000,dynSets.cellSets.cnt,&vp);
-//  Serial.printf("2: %d %d\n",vp,Temp2);
-  if (!dynSets.cellSets.resPwrOn)
-    digitalWrite(RESISTOR_PWR,LOW);
 
   for (int8_t y = 0; y < W_RELAY_TOTAL; y++)
   {
@@ -1192,7 +1157,7 @@ void checkStatus()
     relay[y] = previousRelayState[y]; // don't change it because we might be in the SOC trip/rec area
     if (rp->type == Relay_Direction || rp->type == Relay_Slide) 
       continue;
-    if (rp->off)
+    if (rp->off || rp->type == Relay_Unused)
       relay[y] = LOW;
     else {
       switch (rp->type) {
@@ -1287,7 +1252,6 @@ void setup() {
   }
   WiFi.onEvent(onconnect, WiFiEvent_t::SYSTEM_EVENT_STA_GOT_IP);
   WiFiInit();
-  InitOTA();
   BMSInitStatus(&st);
   if (!readEE("comm",(uint8_t*)&commSets,sizeof(commSets))) {
     commSets.email[0] = 0;
@@ -1336,6 +1300,7 @@ void setup() {
   BMSWaitFor(&msg,DynSets);
   for (int i=0;i<MAX_EVENTS;i++)
     evts[i].when = 0;
+  ArduinoOTA.begin();
   digitalWrite(BLUE_LED,0);
 }
 
