@@ -47,12 +47,12 @@ struct AMsg {
 } __attribute__((packed));
 
 struct EventMsg {
-  uint8_t crc,cmd;
+  uint8_t crc,cmd,relay,xtra;
   uint8_t cell;
   int8_t tC;
   uint16_t mV;
   int16_t amps;
-  uint16_t time;
+  uint16_t ms;
 } __attribute__((packed));
 
 struct SettingMsg {

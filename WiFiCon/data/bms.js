@@ -310,7 +310,9 @@ function getSettings(s) {
                         .append($('<td>').append(value.tC))
                         .append($('<td>').append(value.mV))
                         .append($('<td>').append(value.amps))
-                        .append($('<td>').append(value.time)));
+                        .append($('<td>').append(value.relay))
+                        .append($('<td>').append(value.xtra))
+                        .append($('<td>').append(value.ms)));
                 });
             } else if (s == "temps") {
                 $("input[name='t1B']").val(data.t1B);

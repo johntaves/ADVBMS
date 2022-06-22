@@ -70,7 +70,9 @@ Event* NextEvent(EventMsg* mp = nullptr) {
     ep->msg.tC = 0;
     ep->msg.mV = 0;
     ep->msg.amps = 0;
-    ep->msg.time = 0;
+    ep->msg.ms = 0;
+    ep->msg.relay = 0;
+    ep->msg.xtra = 0;
   }
   ep->when = time(nullptr);
   lastEventTime = ep->when;
@@ -328,9 +330,11 @@ void events(AsyncWebServerRequest *request){
     evt["cell"] = ep->msg.cell;
     evt["tC"] = ep->msg.tC;
     evt["mV"] = ep->msg.mV;
-    evt["time"] = ep->msg.time;
+    evt["ms"] = ep->msg.ms;
     evt["amps"] = ep->msg.amps;
     evt["when"] = ep->when;
+    evt["relay"] = ep->msg.relay;
+    evt["xtra"] = ep->msg.xtra;
   }
 
   serializeJson(doc, *response);
@@ -1120,15 +1124,16 @@ void checkTemps()
       if (tsp->heat > 0 || tsp->therm > 0) {
         Event* ep = NextEvent();
         ep->msg.cmd = HeaterOn;
+        ep->msg.relay = y;
         if (tsp->heat > 0) {
           ep->msg.cell = tsp->cell;
           ep->msg.tC = tsp->hVal;
-          ep->msg.amps = Relay_Heat;
+          ep->msg.xtra = Relay_Heat;
           previousHeaterOnSource[y] = Relay_Heat;
         } else {
           ep->msg.cell = MAX_CELLS;
           ep->msg.tC = tsp->tVal;
-          ep->msg.amps = Relay_Therm;
+          ep->msg.xtra = Relay_Therm;
           previousHeaterOnSource[y] = Relay_Therm;
         }
         digitalWrite(relayPins[y], HIGH);
@@ -1139,7 +1144,8 @@ void checkTemps()
          || (tsp->therm < 0 && tsp->heat < 1 && previousHeaterOnSource[y] != Relay_Heat)) {
       Event* ep = NextEvent();
       ep->msg.cmd = HeaterOff;
-      ep->msg.amps = previousHeaterOnSource[y];
+      ep->msg.relay = y;
+      ep->msg.xtra = previousHeaterOnSource[y];
       if (previousHeaterOnSource[y] == Relay_Heat) {
         ep->msg.cell = tsp->cell;
         ep->msg.tC = tsp->hVal;

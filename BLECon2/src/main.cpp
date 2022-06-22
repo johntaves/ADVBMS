@@ -105,10 +105,10 @@ void doAHCalcs() {
   curAdjMilliAmpMillis[curAdj] = 0;
 }
 
-void SendOverDueEvent(int cell,uint16_t time) {
+void SendOverDueEvent(int cell,uint16_t ms) {
   EventMsg evt;
   evt.cmd = CellsOverDue;
-  evt.time = time;
+  evt.ms = ms;
   BMSSend(&evt);
 }
 void SendEvent(uint8_t cmd,int32_t amps=0, uint16_t volts=0,int8_t temp=0,int cell=0) {
