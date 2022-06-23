@@ -111,12 +111,14 @@ void SendOverDueEvent(int cell,uint16_t ms) {
   evt.ms = ms;
   BMSSend(&evt);
 }
-void SendEvent(uint8_t cmd,int32_t amps=0, uint16_t volts=0,int8_t temp=0,int cell=0) {
+void SendEvent(uint8_t cmd,int32_t amps=0, uint16_t volts=0,int8_t temp=0,int cell=0,int relay=0,int xtra=0) {
   EventMsg evt;
   evt.cmd = cmd;
   evt.cell = cell;
   evt.mV = volts;
   evt.tC = temp;
+  evt.relay = relay;
+  evt.xtra = xtra;
   evt.amps = (int16_t)(amps/1000000);
   BMSSend(&evt);
 }
