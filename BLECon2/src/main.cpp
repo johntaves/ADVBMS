@@ -105,13 +105,7 @@ void doAHCalcs() {
   curAdjMilliAmpMillis[curAdj] = 0;
 }
 
-void SendOverDueEvent(int cell,uint16_t ms) {
-  EventMsg evt;
-  evt.cmd = CellsOverDue;
-  evt.ms = ms;
-  BMSSend(&evt);
-}
-void SendEvent(uint8_t cmd,int32_t amps=0, uint16_t volts=0,int8_t temp=0,int cell=0,int relay=0,int xtra=0) {
+void SendEvent(uint8_t cmd,uint16_t volts=0,int8_t temp=0,int cell=0,uint16_t ms=0,int relay=0,int xtra=0) {
   EventMsg evt;
   evt.cmd = cmd;
   evt.cell = cell;
@@ -119,7 +113,8 @@ void SendEvent(uint8_t cmd,int32_t amps=0, uint16_t volts=0,int8_t temp=0,int ce
   evt.tC = temp;
   evt.relay = relay;
   evt.xtra = xtra;
-  evt.amps = (int16_t)(amps/1000000);
+  evt.ms = ms;
+  evt.amps = (int16_t)(st.lastMicroAmps/1000000);
   BMSSend(&evt);
 }
 
@@ -350,7 +345,7 @@ void checkStatus()
   {
     if (!st.cells[i].conn || !st.cells[i].volts || (millis() - cells[i].cellLast) > (1000*(uint32_t)statSets.CellsOutTime)) {
       if (!cellsOverDue)
-        SendOverDueEvent(i,millis() - cells[i].cellLast);
+        SendEvent(CellsOverDue,st.cells[i].volts,st.cells[i].bdTemp,i,millis() - cells[i].cellLast);
       cellsOverDue = true;
       continue;
     }
@@ -363,7 +358,7 @@ void checkStatus()
     if (cellV > statSets.limits[LimitConsts::Volt][LimitConsts::Cell][LimitConsts::Max][LimitConsts::Trip]) {
       if (!st.maxCellVState) {
         if (!hitTop)
-          SendEvent(CellTopV,st.lastMicroAmps,cellV,cellT,i);
+          SendEvent(CellTopV,cellV,cellT,i);
         hitTop = true;
       }
       st.maxCellVState = true;
@@ -374,7 +369,7 @@ void checkStatus()
     if (cellV < statSets.limits[LimitConsts::Volt][LimitConsts::Cell][LimitConsts::Min][LimitConsts::Trip]) {
       if (!st.minCellVState) {
         if (!hitUnder)
-          SendEvent(CellBotV,st.lastMicroAmps,cellV,cellT,i);
+          SendEvent(CellBotV,cellV,cellT,i);
         hitUnder = true;
       }
       st.minCellVState = true;
@@ -385,7 +380,7 @@ void checkStatus()
     if (statSets.useCellC && cellT != -40) {
       if (cellT > statSets.limits[LimitConsts::Temp][LimitConsts::Cell][LimitConsts::Max][LimitConsts::Trip]) {
         if (!st.maxCellCState)
-          SendEvent(CellTopT,st.lastMicroAmps,cellV,cellT,i);
+          SendEvent(CellTopT,cellV,cellT,i);
         st.maxCellCState = true;
       }
 
@@ -394,7 +389,7 @@ void checkStatus()
 
       if (cellT < statSets.limits[LimitConsts::Temp][LimitConsts::Cell][LimitConsts::Min][LimitConsts::Trip]) {
         if (!st.minCellCState)
-          SendEvent(CellBotT,st.lastMicroAmps,cellV,cellT,i);
+          SendEvent(CellBotT,cellV,cellT,i);
         st.minCellCState = true;
       }
       if (cellT < statSets.limits[LimitConsts::Temp][LimitConsts::Cell][LimitConsts::Min][LimitConsts::Rec])
@@ -429,7 +424,7 @@ void checkStatus()
   if (packV > statSets.limits[LimitConsts::Volt][LimitConsts::Pack][LimitConsts::Max][LimitConsts::Trip]) {
     if (!st.maxPackVState) {
       if (!hitTop)
-        SendEvent(PackTopV,st.lastMicroAmps,st.lastPackMilliVolts);
+        SendEvent(PackTopV,st.lastPackMilliVolts);
       hitTop = true;
     }
     st.maxPackVState = true;
@@ -439,7 +434,7 @@ void checkStatus()
   if (packV < statSets.limits[LimitConsts::Volt][LimitConsts::Pack][LimitConsts::Min][LimitConsts::Trip]) {
     if (!st.minPackVState) {
       if (!hitUnder)
-        SendEvent(PackBotV,st.lastMicroAmps,st.lastPackMilliVolts);
+        SendEvent(PackBotV,st.lastPackMilliVolts);
       hitUnder = true;
     }
     st.minPackVState = true;
