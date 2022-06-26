@@ -425,24 +425,25 @@ void checkStatus()
     if (st.curBoardTemp > statSets.limits[LimitConsts::Temp][LimitConsts::Pack][LimitConsts::Min][LimitConsts::Rec])
       st.minPackCState = false;
   }
-  if (st.lastPackMilliVolts > statSets.limits[LimitConsts::Volt][LimitConsts::Pack][LimitConsts::Max][LimitConsts::Trip]) {
+  uint16_t packV = (st.lastPackMilliVolts > totalVolts ? st.lastPackMilliVolts : totalVolts);
+  if (packV > statSets.limits[LimitConsts::Volt][LimitConsts::Pack][LimitConsts::Max][LimitConsts::Trip]) {
     if (!st.maxPackVState) {
       if (!hitTop)
         SendEvent(PackTopV,st.lastMicroAmps,st.lastPackMilliVolts);
       hitTop = true;
     }
     st.maxPackVState = true;
-  } else if (st.lastPackMilliVolts < statSets.limits[LimitConsts::Volt][LimitConsts::Pack][LimitConsts::Max][LimitConsts::Rec])
+  } else if (packV < statSets.limits[LimitConsts::Volt][LimitConsts::Pack][LimitConsts::Max][LimitConsts::Rec])
     st.maxPackVState = false;
 
-  if (st.lastPackMilliVolts < statSets.limits[LimitConsts::Volt][LimitConsts::Pack][LimitConsts::Min][LimitConsts::Trip]) {
+  if (packV < statSets.limits[LimitConsts::Volt][LimitConsts::Pack][LimitConsts::Min][LimitConsts::Trip]) {
     if (!st.minPackVState) {
       if (!hitUnder)
         SendEvent(PackBotV,st.lastMicroAmps,st.lastPackMilliVolts);
       hitUnder = true;
     }
     st.minPackVState = true;
-  } else if (st.lastPackMilliVolts > statSets.limits[LimitConsts::Volt][LimitConsts::Pack][LimitConsts::Min][LimitConsts::Rec])
+  } else if (packV > statSets.limits[LimitConsts::Volt][LimitConsts::Pack][LimitConsts::Min][LimitConsts::Rec])
     st.minPackVState = false;
 
   if (hitTop || hitUnder) {
