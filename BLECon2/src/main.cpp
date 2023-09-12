@@ -58,7 +58,7 @@ INA_Class         INA(2);
 uint32_t lastShuntMillis;
 int64_t milliAmpMillis,battMilliAmpMillis,accumMilliAmpMillis;
 int curAdj;
-int64_t aveAdjMilliAmpMillis,curAdjMilliAmpMillis[AVEADJAVGS];
+int64_t curAdjMilliAmpMillis[AVEADJAVGS];
 int lastTrip;
 
 //char (*__kaboom)[sizeof( BMSStatus )] = 1;
@@ -96,8 +96,8 @@ void doAHCalcs() {
   if (st.adjCnt < AVEADJAVGS)
     st.adjCnt++;
   for (int i=0;i<st.adjCnt;i++)
-    aveAdjMilliAmpMillis += curAdjMilliAmpMillis[i];
-  aveAdjMilliAmpMillis = st.adjCnt;
+    st.aveAdjMilliAmpMillis += curAdjMilliAmpMillis[i];
+  st.aveAdjMilliAmpMillis = st.adjCnt;
   st.lastAdjMillAmpHrs = (int32_t)(curAdjMilliAmpMillis[curAdj] / ((int64_t)1000 * 60 * 60));
   curAdj++;
   if (curAdj == AVEADJAVGS)
@@ -562,7 +562,7 @@ void setStateOfCharge(int64_t val,bool valid) {
   st.adjCnt = 0;
   curAdjMilliAmpMillis[0] = 0;
   lastTrip = 0;
-  aveAdjMilliAmpMillis = 0;
+  st.aveAdjMilliAmpMillis = 0;
   st.doFullChg = true;
 }
 
@@ -571,7 +571,6 @@ void setBattAH() {
 }
 
 void initdynSets() {
-  dynSets.ConvTime = 1000;
   dynSets.PVMaxAmps = 100;
   dynSets.PVShuntUOhms = 500;
   dynSets.ShuntUOhms = 167;
@@ -579,10 +578,10 @@ void initdynSets() {
   dynSets.nCells=0;
   dynSets.PollFreq = 500;
   dynSets.BattAH = 1;
-  dynSets.ConvTime = 1000;
-  dynSets.Avg = 1000;
-  dynSets.PVConvTime = 1000;
-  dynSets.PVAvg = 1000;
+  dynSets.ConvTime = 332;
+  dynSets.Avg = 1024;
+  dynSets.PVConvTime = 1100;
+  dynSets.PVAvg = 1024;
   dynSets.savedTime = 0;
   dynSets.milliAmpMillis = 0;
   dynSets.cellSets.cnt = 4;
