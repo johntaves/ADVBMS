@@ -322,19 +322,13 @@ function getSettings(s) {
                 $("#nTSets").val(data.nTSets);
                 setupTemps(data);
             } else if (s == "batt") {
-                $("input[name='PollFreq']").val(data.PollFreq);
-                $("input[name='Avg']").val(data.Avg);
-                $("input[name='ConvTime']").val(data.ConvTime);
-                $("input[name='PVAvg']").val(data.PVAvg);
-                $("input[name='PVConvTime']").val(data.PVConvTime);
+                $("input[name='ShuntErrTime']").val(data.ShuntErrTime);
+                $("input[name='MainID']").val(data.MainID);
+                $("input[name='PVID']").val(data.PVID);
                 $("#BattAH").val(data.BattAH);
                 $("#socLastAdj").html(data.socLastAdj);
                 $("#socAvgAdj").html(data.socAvgAdj);
                 $("#BatAHMeasured").html(data.BatAHMeasured);
-                $("#MaxAmps").val(data.MaxAmps);
-                $("#PVMaxAmps").val(data.PVMaxAmps);
-                $("#ShuntUOhms").val(data.ShuntUOhms);
-                $("#PVShuntUOhms").val(data.PVShuntUOhms);
                 $("#nCells").val(data.nCells);
                 $("#CurSOC").val('');
                 $("#TopAmps").val(data.TopAmps);

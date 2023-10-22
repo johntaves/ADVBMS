@@ -925,7 +925,7 @@ void savecapacity(AsyncWebServerRequest *request) {
   saveItem(request,"CurSOC",SetCurSOC,101);
   saveItem(request,"ShuntErrTime",ShuntErrTime,dynSets.ShuntErrTime);
   saveItem(request,"MainID",SetMainID,dynSets.MainID);
-  saveItem(request,"ConvTime", SetPVID,dynSets.PVID);
+  saveItem(request,"PVID", SetPVID,dynSets.PVID);
   saveItem(request,"BattAH",SetBattAH,dynSets.BattAH);
   saveItem(request,"TopAmps",SetTopAmps,dynSets.TopAmps);
   saveItem(request,"nCells",SetNCells,dynSets.nCells);

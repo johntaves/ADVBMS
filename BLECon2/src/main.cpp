@@ -25,6 +25,8 @@ uint32_t statusCnt=0,lastHitCnt=0,scanStart=0;
 Ticker watchDog;
 bool OTAInProg = false;
 
+int CanCnt=0;
+
 class MyClientCallback;
 
 struct Cell {
@@ -296,7 +298,7 @@ void checkStatus()
 {
   statusCnt++;
   statusMS = millis();
-
+Serial.printf("Cnt: %d\n",CanCnt);
   digitalWrite(RESISTOR_PWR,HIGH);
   if (dynSets.cellSets.delay)
     delay(dynSets.cellSets.delay);
@@ -650,7 +652,9 @@ void DoSetting(uint8_t cmd,uint16_t val) {
       rp->off = !rp->off;
       }
       break;
-    case SetMainID: dynSets.MainID = val; break;
+    case SetMainID: dynSets.MainID = val;
+    Serial.printf("M: %d\n",dynSets.MainID);
+     break;
     case SetPVID: dynSets.PVID = val; break;
   }
   writeDynSets = true;
@@ -779,7 +783,6 @@ int64_t ReadIt(int len, int inc) {
     }
     return val2.val;
   }
-  Serial.printf("Len is %d\n",len);
   while (len--)
     CAN.read();
   return 0;
@@ -789,20 +792,22 @@ void RecCAN(int packetSize) {
   int64_t val;
   uint8_t dev = id >> 8;
   uint8_t msg = id & 0xff;
+  CanCnt++;
   if (msg < 0xfa) val = ReadIt(packetSize,1);
   else val = ReadIt(packetSize,-1);
+//  Serial.printf("l: %d, d: %d, m: %d, v: %d\n",packetSize,dev,msg,(int)val);
   switch (msg) {
     case 0xF1: // current
-      if (id == dynSets.PVID)
+      if (dev == dynSets.PVID)
         st.lastPVMilliAmps = val;
-      else if (id == dynSets.MainID)
+      else if (dev == dynSets.MainID)
         st.lastMilliAmps = val;
       getAmps();
       break;
     case 0xF3: // voltage
-      if (id == dynSets.PVID)
+      if (dev == dynSets.PVID)
         st.lastPVMilliVolts = val;
-      else (id == dynSets.MainID)
+      else if (dev == dynSets.MainID)
         st.lastPackMilliVolts = val;
       break;
     case 0xF4:
@@ -817,14 +822,6 @@ void setup() {
   pinMode(GREEN_LED, OUTPUT);
   pinMode(RESISTOR_PWR, OUTPUT);
   digitalWrite(GREEN_LED,1);
-
-  CAN.setPins(GPIO_NUM_21, GPIO_NUM_22);
-  if (!CAN.begin(500000)) {
-    Serial.println("Starting CAN failed!");
-    while (1);
-  } else
-    Serial.println("Started CAN");
-  CAN.onReceive(RecCAN);
 
   BMSInitCom(ConSerData);
   Wire.begin();
@@ -866,8 +863,13 @@ void setup() {
   digitalWrite(GREEN_LED,0);
   xMut = xSemaphoreCreateMutex();
   xTaskCreate(BLETask, "BLE task", 4096, NULL, 10, NULL); // priority value?
-
-canSender();
+  CAN.setPins(GPIO_NUM_21, GPIO_NUM_22);
+  if (!CAN.begin(1E6)) {
+    Serial.println("Starting CAN failed!");
+    while (1);
+  } else
+    Serial.println("Started CAN");
+  CAN.onReceive(RecCAN);
 }
 
 time_t saveTimeDiff = 0;
