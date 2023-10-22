@@ -14,6 +14,7 @@ enum Msg {
   FirstEvent,
   WatchDog,
   CellsOverDue,
+  ShuntOverDue,
   CellTopV,
   CellBotV,
   CellTopT,
@@ -27,8 +28,8 @@ enum Msg {
 
   FirstStr,Panic,DebugStr,LastStr,
 
-  FirstSetting,SetCurSOC,SetPollFreq,SetAvg,SetConvTime,SetPVAvg,SetPVConvTime,SetBattAH,
-  SetMaxAmps,SetShuntUOhms,SetPVMaxAmps,SetPVShuntUOhms,SetNCells,
+  FirstSetting,SetCurSOC,ShuntErrTime,SetBattAH,
+  SetNCells,SetMainID,SetPVID,
   SetRelayOff,SetTopAmps,
   LastSetting,
 
@@ -70,7 +71,7 @@ struct StrMsg {
   char msg[256];
 } __attribute__((packed));
 
-#define C_RELAY_TOTAL 8
+#define C_RELAY_TOTAL 10
 #define W_RELAY_TOTAL 6
 #define RELAY_TOTAL (C_RELAY_TOTAL + W_RELAY_TOTAL)
 #define MAX_CELLS 8
@@ -93,7 +94,7 @@ struct BMSStatus {
   int8_t curBoardTemp,milliRolls;
   uint16_t lastPackMilliVolts,lastPVMilliVolts,maxDiffMilliVolts;
   uint32_t BatAHMeasured,lastMillis;
-  int32_t lastPVMicroAmps,lastMicroAmps,lastAdjMillAmpHrs;
+  int32_t lastPVMilliAmps,lastMilliAmps,lastAdjMillAmpHrs;
   int64_t aveAdjMilliAmpMillis;
   Cells cells[MAX_CELLS];
   uint8_t previousRelayState[C_RELAY_TOTAL];
@@ -129,9 +130,9 @@ struct StatSetts {
 };
 
 struct DynSetts {
-  uint8_t crc,cmd;
-  uint16_t BattAH,MaxAmps,PVMaxAmps,Avg,ConvTime,PVAvg,PVConvTime,TopAmps;
-  uint32_t ShuntUOhms,PVShuntUOhms,PollFreq;
+  uint8_t crc,cmd,MainID,PVID;
+  uint16_t BattAH,TopAmps;
+  uint32_t ShuntErrTime;
   uint8_t nCells;
   uint64_t milliAmpMillis;
   time_t savedTime;

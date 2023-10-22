@@ -33,7 +33,7 @@ Event evts[MAX_EVENTS];
 
 BMSStatus st;
 
-const int relayPins[W_RELAY_TOTAL] = { GPIO_NUM_19,GPIO_NUM_18,GPIO_NUM_2,GPIO_NUM_15,GPIO_NUM_13,GPIO_NUM_14 };
+const int relayPins[W_RELAY_TOTAL] = { GPIO_NUM_2,GPIO_NUM_15,GPIO_NUM_13,GPIO_NUM_14,GPIO_NUM_25,GPIO_NUM_33 };
 
 WiFiSettings wifiSets;
 CommSettings commSets;
@@ -361,11 +361,9 @@ void batt(AsyncWebServerRequest *request){
   JsonObject root = doc.to<JsonObject>();
   root["notRecd"] = notRecd;
 
-  root["PollFreq"] = dynSets.PollFreq;
-  root["Avg"] = dynSets.Avg;
-  root["ConvTime"] = dynSets.ConvTime;
-  root["PVAvg"] = dynSets.PVAvg;
-  root["PVConvTime"] = dynSets.PVConvTime;
+  root["ShuntErrTime"] = dynSets.ShuntErrTime;
+  root["MainID"] = dynSets.MainID;
+  root["PVID"] = dynSets.PVID;
   root["BattAH"] = dynSets.BattAH;
   root["TopAmps"] = dynSets.TopAmps;
 
@@ -374,10 +372,6 @@ void batt(AsyncWebServerRequest *request){
   root["socAvgAdj"] = spb;
   root["BatAHMeasured"] = st.BatAHMeasured > 0 ? String(st.BatAHMeasured) : String("N/A");
 
-  root["MaxAmps"] = dynSets.MaxAmps;
-  root["ShuntUOhms"] = dynSets.ShuntUOhms;
-  root["PVMaxAmps"] = dynSets.PVMaxAmps;
-  root["PVShuntUOhms"] = dynSets.PVShuntUOhms;
   root["nCells"] = dynSets.nCells;
 
   root["cellCnt"] = dynSets.cellSets.cnt;
@@ -644,11 +638,11 @@ void fillStatusDoc(JsonVariant root) {
     }
   }
 
-  root["packcurrent"] = st.lastMicroAmps/1000;
+  root["packcurrent"] = st.lastMilliAmps;
   root["packvolts"] = st.lastPackMilliVolts;
   root["pvvolts"] = st.lastPVMilliVolts;
   root["maxdiffvolts"] = st.maxDiffMilliVolts;
-  root["pvcurrent"] = st.lastPVMicroAmps/1000;
+  root["pvcurrent"] = st.lastPVMilliAmps;
   snprintf(spb,sizeof(spb),"%d%%",st.stateOfCharge);
   root["soc"] = spb;
   root["socvalid"] = st.stateOfChargeValid;
@@ -929,17 +923,11 @@ void saveItem(AsyncWebServerRequest *request,const char* n,uint8_t cmd,uint16_t 
 
 void savecapacity(AsyncWebServerRequest *request) {
   saveItem(request,"CurSOC",SetCurSOC,101);
-  saveItem(request,"PollFreq",SetPollFreq,dynSets.PollFreq);
-  saveItem(request,"Avg",SetAvg,dynSets.Avg);
-  saveItem(request,"ConvTime", SetConvTime,dynSets.ConvTime);
-  saveItem(request,"PVAvg",SetPVAvg,dynSets.PVAvg);
-  saveItem(request,"PVConvTime", SetPVConvTime,dynSets.PVConvTime);
+  saveItem(request,"ShuntErrTime",ShuntErrTime,dynSets.ShuntErrTime);
+  saveItem(request,"MainID",SetMainID,dynSets.MainID);
+  saveItem(request,"ConvTime", SetPVID,dynSets.PVID);
   saveItem(request,"BattAH",SetBattAH,dynSets.BattAH);
   saveItem(request,"TopAmps",SetTopAmps,dynSets.TopAmps);
-  saveItem(request,"MaxAmps",SetMaxAmps,dynSets.MaxAmps);
-  saveItem(request,"ShuntUOhms",SetShuntUOhms,dynSets.ShuntUOhms);
-  saveItem(request,"PVMaxAmps",SetPVMaxAmps,dynSets.PVMaxAmps);
-  saveItem(request,"PVShuntUOhms", SetPVShuntUOhms,dynSets.PVShuntUOhms);
   saveItem(request,"nCells",SetNCells,dynSets.nCells);
   sendSuccess(request);
 }

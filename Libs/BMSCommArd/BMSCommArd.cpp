@@ -73,7 +73,8 @@ void BMSInitStatus(BMSStatus *sp) {
   sp->watchDogHits = 0;
   sp->lastPackMilliVolts = 0xffff;
   sp->maxDiffMilliVolts = 0;
-  sp->lastPVMicroAmps=0;
+  sp->lastPVMilliAmps=0;
+  sp->lastMilliAmps=0;
   sp->doFullChg = true;
   sp->maxCellVState=false;sp->minCellVState=false;
   sp->maxPackVState=false;sp->minPackVState=false;

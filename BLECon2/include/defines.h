@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <INA.h>
 
 #ifndef JTBMS_DEFINES_H_
 #define JTBMS_DEFINES_H_
@@ -18,5 +17,18 @@ struct BLESettings {
   int numCells;
   NimBLEAddress addrs[MAX_CELLS];
 };
+
+union ArrTo8 {
+  byte array[8];
+  int64_t val;
+} __attribute__((packed));
+union ArrTo4 {
+  byte array[4];
+  int32_t val;
+} __attribute__((packed));
+union ArrTo2 {
+  byte array[2];
+  int16_t val;
+} __attribute__((packed));
 
 #endif
