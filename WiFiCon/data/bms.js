@@ -486,6 +486,16 @@ function queryBMS() {
         else $("#Temp2").show();
         $("#Temp2 .v").html(val);
 
+        val = data.Water;
+        if (val == 200) $("#Water").hide();
+        else $("#Water").show();
+        $("#Water .v").html(val + '%');
+
+        val = data.Gas;
+        if (val == 200) $("#Gas").hide();
+        else $("#Gas").show();
+        $("#Gas .v").html(val + '%');
+
         $("#uptimec .v").html(data.uptimec);
         $("#uptimew .v").html(data.uptimew);
 
@@ -571,12 +581,17 @@ function toggleTemp() {
 function setRelayType() {
     var r = $(this).attr("relay");
     var val = $(this).val();
-    if (val == "CP" || val == "LP" || val == "H" || val == "B")
+    if (val == "CP" || val == "LP" || val == "H" || val == "B" || val == "A")
         $("#relayDoSoC"+r).show();
     else $("#relayDoSoC"+r).hide();
     if (val == "L" || val == "LP")
         $("#relayDoFrom"+r).show();
     else $("#relayDoFrom"+r).hide();
+    if (val == "A") {
+        $("label[for='relayTrip"+r+"'] "+r).text("On hold");
+    } else {
+        $("label[for='relayTrip"+r+"'] "+r).text("Trip:");
+    }
 }
 
 function setHiddenTime() {
@@ -633,7 +648,7 @@ function setupRelays(rt) {
         temp.attr({id: "relay"+rel});
         temp.find("[for='relayName']").text("J"+rel+":");
         if (rel < 8) {
-            temp.find("#relayType option[value='S'],#relayType option[value='D'],#relayType option[value='T']").hide();
+            temp.find("#relayType option[value='S'],#relayType option[value='D'],#relayType option[value='T'],#relayType option[value='A']").hide();
         }
         $.each(['Name','DoSoC','Type','Trip','Rec','DoFrom','From'],function (index,value) {
             temp.find('#relay'+value).attr({id: "relay"+value+rel, name: "relay"+value+rel});

@@ -298,7 +298,6 @@ void checkStatus()
 {
   statusCnt++;
   statusMS = millis();
-Serial.printf("Cnt: %d\n",CanCnt);
   digitalWrite(RESISTOR_PWR,HIGH);
   if (dynSets.cellSets.delay)
     delay(dynSets.cellSets.delay);

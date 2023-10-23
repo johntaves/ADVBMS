@@ -16,6 +16,8 @@
                 <div id="BoardTemp" class="stat rt"><div class="h">Board&deg;</div><a href="" class="v"></a></div>
                 <div id="Temp2" class="stat rt"><div class="h">Re&deg; 2</div><div class="v"></div></div>
                 <div id="Temp1" class="stat rt"><div class="h">Fr&deg; 1</div><div class="v"></div></div>
+                <div id="Water" class="stat rt"><div class="h">H2O</div><div class="v"></div></div>
+                <div id="Gas" class="stat rt"><div class="h">Gas</div><div class="v"></div></div>
                 <div id="celltemp" class="stat rt"><div class="h">Cell T</div><div class="v highlight"></div></div>
                 <div id="cellvolt" class="stat"><div class="h">Cell V</div><div class="v highlight"></div></div>
                 <div id="packcurrent" class="stat"><div class="h">Pack (A)</div><div class="v"></div></div>
@@ -163,12 +165,13 @@
                         <option value="T">Thermostat</option>
                         <option value="D">Direction</option>
                         <option value="S">Slide</option>
+                        <option value="A">Ampinvt</option>
                     </select>
                     <span id="relayDoSoC">
-                    <label for="relayTrip">Trip:</label>
-                        <input type="number" min="0" max="100" step="1" name="relayTrip" id="relayTrip" value="50">
-                    <label for="relayRec">Rec:</label>
-                        <input type="number" min="0" max="100" step="1" name="relayRec" id="relayRec" value="40"></span>
+                        <label for="relayTrip">Trip:</label>
+                            <input type="number" min="0" max="100" step="1" name="relayTrip" id="relayTrip" value="50">
+                        <label for="relayRec">Rec:</label>
+                            <input type="number" min="0" max="100" step="1" name="relayRec" id="relayRec" value="40"></span>
                     <span id="relayDoFrom"><label for="relayFrom">From:</label>
                         <input type="text" name="relayFrom" id="relayFrom" value=""></span>
                 </div>

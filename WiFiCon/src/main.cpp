@@ -42,6 +42,7 @@ StatSetts statSets;
 DispSettings dispSets;
 WRelaySettings relSets;
 int8_t Temp1,Temp2;
+uint8_t Water,Gas;
 
 char spb[1024];
 
@@ -50,11 +51,15 @@ AsyncWebServer server(80);
 SMTPData smtpData;
 uint8_t previousRelayState[W_RELAY_TOTAL];
 uint8_t previousHeaterOnSource[W_RELAY_TOTAL];
+bool AmpinvtOn; // status goal
+uint32_t AmpinvtSt = 0; // start time of toggle
+uint32_t AmpinvtStWait = 0; // start time of wait after toggled
 
 volatile uint32_t slideStart;
 volatile int32_t slidePos[W_RELAY_TOTAL];
 volatile bool slidingOut,doingAll = false;
-int dirRelayPin,sliding = -1;
+int dirRelayPin,AmpinvtRelayPin,sliding = -1;
+RelaySettings* AmpinvtRelayPtr;
 String emailRes = "";
 
 uint8_t milliRolls=0;
@@ -246,6 +251,7 @@ void relays(AsyncWebServerRequest *request){
       case Relay_Slide: rule1["type"] = "S"; break;
       case Relay_Direction: rule1["type"] = "D"; break;
       case Relay_Unused: rule1["type"] = "U"; break;
+      case Relay_Ampinvt: rule1["type"] = "A"; break;
     }
     
     rule1["trip"] = rp->trip;
@@ -609,8 +615,11 @@ void fillStatusDoc(JsonVariant root) {
       state = st.previousRelayState[i];
       rp = &statSets.relays[i];
     } else {
-      state = previousRelayState[i - C_RELAY_TOTAL];
       rp = &relSets.relays[i - C_RELAY_TOTAL];
+      if (rp->type == Relay_Ampinvt)
+        state = digitalRead(INV);
+      else 
+        state = previousRelayState[i - C_RELAY_TOTAL];
     }
     if (strlen(rp->name) == 0 || rp->type == Relay_Direction)
       continue;
@@ -649,6 +658,8 @@ void fillStatusDoc(JsonVariant root) {
   root["BoardTemp"] = fromCel(st.curBoardTemp);
   root["Temp1"] = fromCel(Temp1);
   root["Temp2"] = fromCel(Temp2);
+  root["Water"] = Water;
+  root["Gas"] = Gas;
   root["fullChg"] = st.doFullChg;
 
   root["maxCellVState"] = st.maxCellVState;
@@ -800,6 +811,11 @@ void saverelays(AsyncWebServerRequest *request) {
       request->getParam(name, true)->value().toCharArray(type,sizeof(type));
       switch (type[0]) {
         default: case 'E':rp->type = Relay_Connect;break;
+        case 'A':
+          rp->type = Relay_Ampinvt; 
+          AmpinvtRelayPtr = rp;
+          AmpinvtRelayPin = relayPins[relay - C_RELAY_TOTAL];
+          break;
         case 'L':rp->type = Relay_Load;break;
         case 'C':rp->type = Relay_Charge; break;
         case 'T':rp->type = Relay_Therm; break;
@@ -1036,9 +1052,25 @@ void checkTemps()
 //  uint16_t vp;
 //  uint32_t rt;
 //  double T;
-  Temp1 = BMSReadTemp(TEMP1,false,statSets.bdVolts,dispSets.t1B,dispSets.t1R,51000,dynSets.cellSets.cnt);
+  Temp1 = BMSReadTemp(TEMP1,false,statSets.bdVolts,dispSets.t1B,dispSets.t1R,47000,dynSets.cellSets.cnt);
 //  Serial.printf("1: %d %d %d %f, ",vp,Temp1,rt,T);
-  Temp2 = BMSReadTemp(TEMP2,false,statSets.bdVolts,dispSets.t2B,dispSets.t2R,51000,dynSets.cellSets.cnt);
+  Temp2 = BMSReadTemp(TEMP2,false,statSets.bdVolts,dispSets.t2B,dispSets.t2R,47000,dynSets.cellSets.cnt);
+
+  // 1657 is 0 inches
+  // 3000 is known R
+  // 157 is slope
+  // 8inches is 100%
+  uint32_t v = BMSReadVoltage(WATER,dynSets.cellSets.cnt);
+  if (v > 1200)
+    Water = 200;
+  else Water = (165700 - ((v * 300000) / (statSets.bdVolts - v))) / (157*8);
+
+  // min R 0, max R 90
+  // 180 is known R, * 100 to get %
+  v = BMSReadVoltage(GAS,dynSets.cellSets.cnt);
+  if (v > 1200)
+    Gas = 200;
+  else Gas = ((v * 18000) / (statSets.bdVolts - v)) / 90;
 //  Serial.printf("2: %d %d\n",vp,Temp2);
   if (!dynSets.cellSets.resPwrOn)
     digitalWrite(RESISTOR_PWR,LOW);
@@ -1169,7 +1201,7 @@ void checkStatus()
           if (isFromOff(rp))
             relay[y] = HIGH;
           else if (rp->doSoC && (!st.stateOfChargeValid || st.stateOfCharge < rp->trip))
-            relay[y] = LOW; // turn if off
+            relay[y] = LOW; // turn it off
           else if (!rp->doSoC || (rp->doSoC && st.stateOfChargeValid && st.stateOfCharge > rp->rec))
             relay[y] = HIGH; // turn it on
           // else leave it as-is
@@ -1181,13 +1213,21 @@ void checkStatus()
             relay[y] = HIGH; // on
           // else leave it as-is
           break;
+        case Relay_Ampinvt:
+          if (isFromOff(rp))
+            AmpinvtOn = false;
+          else if (rp->doSoC && (!st.stateOfChargeValid || st.stateOfCharge < rp->trip))
+            AmpinvtOn = false; // turn it off
+          else if (rp->doSoC && st.stateOfChargeValid && st.stateOfCharge > rp->rec)
+            AmpinvtOn = true; // turn it on
+          break;
       }
     }
   }
   for (int8_t n = 0; n < W_RELAY_TOTAL; n++)
   {
     if (previousRelayState[n] != relay[n])
-    { // no effect on slide and dir, because previous was set above to match
+    { // no effect on slide and dir and ampinv, because previous was set above to match
       digitalWrite(relayPins[n], relay[n]);
       previousRelayState[n] = relay[n];
       Serial.printf("Chg: %d to %d\n",n,previousRelayState[n]);
@@ -1235,7 +1275,10 @@ void setup() {
   BMSADCInit();
   adc1_config_channel_atten(TEMP1, ADC_ATTEN_DB_11);
   adc1_config_channel_atten(TEMP2, ADC_ATTEN_DB_11);
+  adc1_config_channel_atten(WATER, ADC_ATTEN_DB_11);
+  adc1_config_channel_atten(GAS, ADC_ATTEN_DB_11);
   pinMode(IGN, INPUT);
+  pinMode(INV, INPUT);
   pinMode(RESISTOR_PWR, OUTPUT);
   pinMode(BLUE_LED, OUTPUT);
   digitalWrite(BLUE_LED,1);
@@ -1277,6 +1320,9 @@ void setup() {
       if (dirRelayPin)
         relSets.relays[i].type = Relay_Unused;
       else dirRelayPin = relayPins[i];
+    } else if (relSets.relays[i].type == Relay_Ampinvt) {
+      AmpinvtRelayPtr = &relSets.relays[i];
+      AmpinvtRelayPin = relayPins[i];
     }
   }
   if (!readEE("disp",(uint8_t*)&dispSets,sizeof(dispSets))) {
@@ -1337,6 +1383,26 @@ void loop() {
     checkStatus();
   if ((millis() - tempMS) > 6000)
     checkTemps();
+  bool AState = digitalRead(INV);
+  if (!AmpinvtSt && !AmpinvtStWait && (AmpinvtOn != AState)) {
+    AmpinvtSt = millis();
+    if (!AmpinvtSt) AmpinvtSt = 1; // 1 in 4billion chance of this happening;
+    digitalWrite(AmpinvtRelayPin,HIGH);
+    Serial.println("ON");
+  } else if (AmpinvtSt) {
+    uint32_t diff = millis() - AmpinvtSt;
+    if ((AmpinvtOn && (diff > 100*(uint32_t)AmpinvtRelayPtr->trip)) ||
+      (!AmpinvtOn && (diff > 100*(uint32_t)AmpinvtRelayPtr->rec))) {
+        digitalWrite(AmpinvtRelayPin,LOW);
+        AmpinvtSt = 0;
+        AmpinvtStWait = millis();
+        if (!AmpinvtStWait) AmpinvtStWait = 1;
+    Serial.println("OFF");
+      }
+  } else if (AmpinvtStWait && (millis() - AmpinvtStWait) > 3000) {
+    Serial.println("Done");
+    AmpinvtStWait = 0;
+  }
 
   ArduinoOTA.handle(); // this does nothing until it is initialized
 }
