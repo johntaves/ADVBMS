@@ -588,9 +588,11 @@ function setRelayType() {
         $("#relayDoFrom"+r).show();
     else $("#relayDoFrom"+r).hide();
     if (val == "A") {
-        $("label[for='relayTrip"+r+"'] "+r).text("On hold");
+        $("label[for='relayTrip"+r+"']").html("On Hold Dur (100ms):");
+        $("label[for='relayRec"+r+"']").html("Off Hold Dur (100ms):");
     } else {
-        $("label[for='relayTrip"+r+"'] "+r).text("Trip:");
+        $("label[for='relayTrip"+r+"']").html("Trip:");
+        $("label[for='relayRec"+r+"']").html("Rec:");
     }
 }
 

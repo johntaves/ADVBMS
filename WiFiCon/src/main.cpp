@@ -1388,7 +1388,6 @@ void loop() {
     AmpinvtSt = millis();
     if (!AmpinvtSt) AmpinvtSt = 1; // 1 in 4billion chance of this happening;
     digitalWrite(AmpinvtRelayPin,HIGH);
-    Serial.println("ON");
   } else if (AmpinvtSt) {
     uint32_t diff = millis() - AmpinvtSt;
     if ((AmpinvtOn && (diff > 100*(uint32_t)AmpinvtRelayPtr->trip)) ||
@@ -1397,12 +1396,9 @@ void loop() {
         AmpinvtSt = 0;
         AmpinvtStWait = millis();
         if (!AmpinvtStWait) AmpinvtStWait = 1;
-    Serial.println("OFF");
       }
-  } else if (AmpinvtStWait && (millis() - AmpinvtStWait) > 3000) {
-    Serial.println("Done");
+  } else if (AmpinvtStWait && (millis() - AmpinvtStWait) > 3000)
     AmpinvtStWait = 0;
-  }
 
   ArduinoOTA.handle(); // this does nothing until it is initialized
 }
