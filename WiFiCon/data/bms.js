@@ -140,7 +140,7 @@ function initChart() {
                         display: true,
                         labelString: 'Amps'
                     },
-                    ticks: { max: 60, min: -100 }
+                    ticks: { max: 60, min: -200 }
                 },{
                     display: true,
                     id: 'sa',
