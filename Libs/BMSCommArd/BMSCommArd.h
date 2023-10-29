@@ -8,7 +8,7 @@ enum Msg {
   Nada,
   FirstMsg,
   NoPanic,
-  FullChg,StatQuery,DynQuery,ClrMaxDiff,
+  FullChg,StatQuery,DynQuery,
   LastMsg,
 
   FirstEvent,
@@ -92,7 +92,7 @@ struct BMSStatus {
   uint8_t crc,cmd;
   uint8_t stateOfCharge,watchDogHits;
   int8_t curBoardTemp,milliRolls;
-  uint16_t lastPackMilliVolts,lastPVMilliVolts,maxDiffMilliVolts;
+  uint16_t lastPackMilliVolts,lastPVMilliVolts;
   uint32_t BatAHMeasured,lastMillis;
   int32_t lastPVMilliAmps,lastMilliAmps,lastAdjMillAmpHrs;
   int64_t aveAdjMilliAmpMillis;

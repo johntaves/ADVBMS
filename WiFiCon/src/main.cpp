@@ -33,7 +33,7 @@ Event evts[MAX_EVENTS];
 
 BMSStatus st;
 
-const int relayPins[W_RELAY_TOTAL] = { GPIO_NUM_2,GPIO_NUM_15,GPIO_NUM_13,GPIO_NUM_14,GPIO_NUM_25,GPIO_NUM_33 };
+const int relayPins[W_RELAY_TOTAL] = { GPIO_NUM_2,GPIO_NUM_15,GPIO_NUM_13,GPIO_NUM_12,GPIO_NUM_14,GPIO_NUM_27 };
 
 WiFiSettings wifiSets;
 CommSettings commSets;
@@ -51,15 +51,11 @@ AsyncWebServer server(80);
 SMTPData smtpData;
 uint8_t previousRelayState[W_RELAY_TOTAL];
 uint8_t previousHeaterOnSource[W_RELAY_TOTAL];
-bool AmpinvtOn; // status goal
-uint32_t AmpinvtSt = 0; // start time of toggle
-uint32_t AmpinvtStWait = 0; // start time of wait after toggled
 
 volatile uint32_t slideStart;
 volatile int32_t slidePos[W_RELAY_TOTAL];
 volatile bool slidingOut,doingAll = false;
-int dirRelayPin,AmpinvtRelayPin,sliding = -1;
-RelaySettings* AmpinvtRelayPtr;
+int dirRelayPin,sliding = -1;
 String emailRes = "";
 
 uint8_t milliRolls=0;
@@ -329,6 +325,7 @@ void events(AsyncWebServerRequest *request){
       case PackBotT: evt["cmd"] = "Pack Under T"; break;
       case HeaterOn: evt["cmd"] = "Heat On"; break;
       case HeaterOff: evt["cmd"] = "Heat Off"; break;
+      case ShuntOverDue: evt["cmd"] = "Shunt Over Due"; break;
       case ConnCell: evt["cmd"] = "Connected"; break;
       case DiscCell: evt["cmd"] = "Disconnected"; break;
       default: evt["cmd"] = ep->msg.cmd; break;
@@ -523,13 +520,6 @@ void allIn(AsyncWebServerRequest *request) {
   sendSuccess(request);
 }
 
-void clrMaxDiff(AsyncWebServerRequest *request) {
-  AMsg msg;
-  msg.cmd =   ClrMaxDiff;
-  BMSSend(&msg);
-  sendSuccess(request);
-}
-
 void fullChg(AsyncWebServerRequest *request) {
   AMsg msg;
   msg.cmd = FullChg;
@@ -612,14 +602,14 @@ void fillStatusDoc(JsonVariant root) {
     int state;
     RelaySettings *rp;
     if (i < C_RELAY_TOTAL) {
-      state = st.previousRelayState[i];
       rp = &statSets.relays[i];
-    } else {
-      rp = &relSets.relays[i - C_RELAY_TOTAL];
       if (rp->type == Relay_Ampinvt)
         state = digitalRead(INV);
       else 
-        state = previousRelayState[i - C_RELAY_TOTAL];
+        state = st.previousRelayState[i];
+    } else {
+      rp = &relSets.relays[i - C_RELAY_TOTAL];
+      state = previousRelayState[i - C_RELAY_TOTAL];
     }
     if (strlen(rp->name) == 0 || rp->type == Relay_Direction)
       continue;
@@ -650,7 +640,6 @@ void fillStatusDoc(JsonVariant root) {
   root["packcurrent"] = st.lastMilliAmps;
   root["packvolts"] = st.lastPackMilliVolts;
   root["pvvolts"] = st.lastPVMilliVolts;
-  root["maxdiffvolts"] = st.maxDiffMilliVolts;
   root["pvcurrent"] = st.lastPVMilliAmps;
   snprintf(spb,sizeof(spb),"%d%%",st.stateOfCharge);
   root["soc"] = spb;
@@ -813,8 +802,6 @@ void saverelays(AsyncWebServerRequest *request) {
         default: case 'E':rp->type = Relay_Connect;break;
         case 'A':
           rp->type = Relay_Ampinvt; 
-          AmpinvtRelayPtr = rp;
-          AmpinvtRelayPin = relayPins[relay - C_RELAY_TOTAL];
           break;
         case 'L':rp->type = Relay_Load;break;
         case 'C':rp->type = Relay_Charge; break;
@@ -979,7 +966,6 @@ void startServer() {
   server.on("/allOut", HTTP_GET, allOut);
   server.on("/allIn", HTTP_GET, allIn);
   server.on("/fullChg", HTTP_POST, fullChg);
-  server.on("/clrMaxDiff", HTTP_GET, clrMaxDiff);
   server.on("/dump", HTTP_POST, dump);
   server.on("/forget", HTTP_POST, forget);
   server.on("/move", HTTP_POST, doMove);
@@ -1061,6 +1047,7 @@ void checkTemps()
   // 157 is slope
   // 8inches is 100%
   uint32_t v = BMSReadVoltage(WATER,dynSets.cellSets.cnt);
+  Serial.printf("W: %d %d\n",v,((v * 300000) / (statSets.bdVolts - v)));
   if (v > 1200)
     Water = 200;
   else Water = (165700 - ((v * 300000) / (statSets.bdVolts - v))) / (157*8);
@@ -1068,12 +1055,14 @@ void checkTemps()
   // min R 0, max R 90
   // 180 is known R, * 100 to get %
   v = BMSReadVoltage(GAS,dynSets.cellSets.cnt);
+  Serial.printf("G: %d %d\n",v,((v * 18000) / (statSets.bdVolts - v)));
   if (v > 1200)
     Gas = 200;
   else Gas = ((v * 18000) / (statSets.bdVolts - v)) / 90;
 //  Serial.printf("2: %d %d\n",vp,Temp2);
   if (!dynSets.cellSets.resPwrOn)
     digitalWrite(RESISTOR_PWR,LOW);
+
   struct tm t;
   getLocalTime(&t);
   int curMin = (t.tm_hour * 60) + t.tm_min;
@@ -1213,14 +1202,6 @@ void checkStatus()
             relay[y] = HIGH; // on
           // else leave it as-is
           break;
-        case Relay_Ampinvt:
-          if (isFromOff(rp))
-            AmpinvtOn = false;
-          else if (rp->doSoC && (!st.stateOfChargeValid || st.stateOfCharge < rp->trip))
-            AmpinvtOn = false; // turn it off
-          else if (rp->doSoC && st.stateOfChargeValid && st.stateOfCharge > rp->rec)
-            AmpinvtOn = true; // turn it on
-          break;
       }
     }
   }
@@ -1273,15 +1254,15 @@ void setup() {
   Serial.begin(9600);
   Serial.println("Alive");
   BMSADCInit();
-  adc1_config_channel_atten(TEMP1, ADC_ATTEN_DB_11);
-  adc1_config_channel_atten(TEMP2, ADC_ATTEN_DB_11);
-  adc1_config_channel_atten(WATER, ADC_ATTEN_DB_11);
-  adc1_config_channel_atten(GAS, ADC_ATTEN_DB_11);
   pinMode(IGN, INPUT);
   pinMode(INV, INPUT);
   pinMode(RESISTOR_PWR, OUTPUT);
   pinMode(BLUE_LED, OUTPUT);
   digitalWrite(BLUE_LED,1);
+  adc1_config_channel_atten(TEMP1, ADC_ATTEN_DB_11);
+  adc1_config_channel_atten(TEMP2, ADC_ATTEN_DB_11);
+  adc1_config_channel_atten(WATER, ADC_ATTEN_DB_11);
+  adc1_config_channel_atten(GAS, ADC_ATTEN_DB_11);
   BMSInitCom(&WonSerData);
   Wire.begin();
   if(!SPIFFS.begin()){
@@ -1320,9 +1301,6 @@ void setup() {
       if (dirRelayPin)
         relSets.relays[i].type = Relay_Unused;
       else dirRelayPin = relayPins[i];
-    } else if (relSets.relays[i].type == Relay_Ampinvt) {
-      AmpinvtRelayPtr = &relSets.relays[i];
-      AmpinvtRelayPin = relayPins[i];
     }
   }
   if (!readEE("disp",(uint8_t*)&dispSets,sizeof(dispSets))) {
@@ -1383,22 +1361,6 @@ void loop() {
     checkStatus();
   if ((millis() - tempMS) > 6000)
     checkTemps();
-  bool AState = digitalRead(INV);
-  if (!AmpinvtSt && !AmpinvtStWait && (AmpinvtOn != AState)) {
-    AmpinvtSt = millis();
-    if (!AmpinvtSt) AmpinvtSt = 1; // 1 in 4billion chance of this happening;
-    digitalWrite(AmpinvtRelayPin,HIGH);
-  } else if (AmpinvtSt) {
-    uint32_t diff = millis() - AmpinvtSt;
-    if ((AmpinvtOn && (diff > 100*(uint32_t)AmpinvtRelayPtr->trip)) ||
-      (!AmpinvtOn && (diff > 100*(uint32_t)AmpinvtRelayPtr->rec))) {
-        digitalWrite(AmpinvtRelayPin,LOW);
-        AmpinvtSt = 0;
-        AmpinvtStWait = millis();
-        if (!AmpinvtStWait) AmpinvtStWait = 1;
-      }
-  } else if (AmpinvtStWait && (millis() - AmpinvtStWait) > 3000)
-    AmpinvtStWait = 0;
 
   ArduinoOTA.handle(); // this does nothing until it is initialized
 }

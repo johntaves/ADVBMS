@@ -23,7 +23,12 @@ bool shuntOverDue=true,cellsOverDue = true,loadsOff = true,chgOff = true
   ,writeStatSets=false,writeDynSets=false,writeCellSet=false,missingCell;
 uint32_t statusCnt=0,lastHitCnt=0,scanStart=0;
 Ticker watchDog;
-bool OTAInProg = false;
+
+bool AmpinvtOn; // status goal
+uint32_t AmpinvtSt = 0; // start time of toggle
+uint32_t AmpinvtStWait = 0; // start time of wait after toggled
+RelaySettings* AmpinvtRelayPtr;
+int AmpinvtRelayPin;
 
 int CanCnt=0;
 
@@ -57,7 +62,7 @@ bool inAlertState = true;
 NimBLEScan* pBLEScan;
 
 uint32_t lastShuntMillis;
-int64_t milliAmpMillis,battMilliAmpMillis,accumMilliAmpMillis;
+int64_t milliAmpMillis,battMilliAmpMillis;
 int curAdj;
 int64_t curAdjMilliAmpMillis[AVEADJAVGS];
 int lastTrip;
@@ -68,7 +73,6 @@ void getAmps() {
   uint32_t thisMillis = millis();
   int64_t deltaMilliAmpMillis = (int64_t)st.lastMilliAmps * (thisMillis - lastShuntMillis);
   milliAmpMillis += deltaMilliAmpMillis;
-  accumMilliAmpMillis += abs(deltaMilliAmpMillis);
 
   lastShuntMillis = thisMillis;
   if (milliAmpMillis < 0) {
@@ -340,10 +344,12 @@ void checkStatus()
   uint16_t totalVolts=0;
   int nCellsAlive = 0;
   if ((millis() - mainShuntMS) > dynSets.ShuntErrTime) {
-      if (!shuntOverDue)
-        SendEvent(ShuntOverDue);
+    if (!shuntOverDue)
+      SendEvent(ShuntOverDue);
+    clearRelays();
     shuntOverDue = true;
-  }
+  } else
+    shuntOverDue = false;
   for (int8_t i = 0; i < dynSets.nCells; i++)
   {
     if (!st.cells[i].conn || !st.cells[i].volts || (millis() - cells[i].cellLast) > (1000*(uint32_t)statSets.CellsOutTime)) {
@@ -401,9 +407,6 @@ void checkStatus()
   }
   if (nCellsAlive == dynSets.nCells)
     cellsOverDue = false;
-  uint16_t diffVolts = totalVolts > st.lastPackMilliVolts? totalVolts - st.lastPackMilliVolts: st.lastPackMilliVolts - totalVolts;
-  if (diffVolts > st.maxDiffMilliVolts)
-    st.maxDiffMilliVolts = diffVolts;
   if (st.maxCellVState && allovervoltrec)
     st.maxCellVState = false;
   if (st.minCellVState && allundervoltrec)
@@ -521,13 +524,22 @@ void checkStatus()
             relay[y] = HIGH; // on
           // else leave it as-is
           break;
-        case Relay_Heat:
-          int16_t val=255;
-          for (int i=0;i<dynSets.nCells;i++)
-            if (st.cells[i].exTemp < val && st.cells[i].conn && st.cells[i].volts)
-              val = st.cells[i].exTemp;
-          if (val < rp->trip) relay[y] = HIGH;
-          else if (val > rp->rec) relay[y] = LOW;
+        case Relay_Heat: {
+            int16_t val=255;
+            for (int i=0;i<dynSets.nCells;i++)
+              if (st.cells[i].exTemp < val && st.cells[i].conn && st.cells[i].volts)
+                val = st.cells[i].exTemp;
+            if (val < rp->trip) relay[y] = HIGH;
+            else if (val > rp->rec) relay[y] = LOW;
+          }
+          break;
+        case Relay_Ampinvt:
+          if (isFromOff(rp))
+            AmpinvtOn = false;
+          else if (rp->doSoC && (!st.stateOfChargeValid || st.stateOfCharge < rp->trip))
+            AmpinvtOn = false; // turn it off
+          else if (rp->doSoC && st.stateOfChargeValid && st.stateOfCharge > rp->rec)
+            AmpinvtOn = true; // turn it on
           break;
       }
   }
@@ -705,6 +717,16 @@ void DoForget(SettingMsg *mp) {
   writeCellSet = true;
 }
 
+void SetAmpinvtVals() {
+  for (int i=0;i<C_RELAY_TOTAL;i++) {
+    if (statSets.relays[i].type == Relay_Ampinvt) {
+      AmpinvtRelayPtr = &statSets.relays[i];
+      AmpinvtRelayPin = relayPins[i];
+      break;
+    }
+  }
+}
+
 void ConSerData(const AMsg *mp)
 {
   if (mp->cmd > FirstSetting && mp->cmd < LastSetting)
@@ -720,10 +742,13 @@ void ConSerData(const AMsg *mp)
     case ForgetCell: DoForget((SettingMsg*)mp); break;
     case DumpCell: DoDump((DumpMsg*)mp); break;
     case FullChg: st.doFullChg = !st.doFullChg; break;
-    case ClrMaxDiff: st.maxDiffMilliVolts = 0; break;
     case StatQuery: BMSSend(&statSets); break;
     case DynQuery: BMSSend(&dynSets); break;
-    case StatSets: statSets = *(StatSetts*)mp; writeStatSets=true; break;
+    case StatSets: 
+      statSets = *(StatSetts*)mp;
+      SetAmpinvtVals();
+      writeStatSets=true;
+      break;
   }
 }
 
@@ -795,6 +820,8 @@ void RecCAN(int packetSize) {
   if (msg < 0xfa) val = ReadIt(packetSize,1);
   else val = ReadIt(packetSize,-1);
 //  Serial.printf("l: %d, d: %d, m: %d, v: %d\n",packetSize,dev,msg,(int)val);
+  if (dev == dynSets.MainID)
+    mainShuntMS = millis();
   switch (msg) {
     case 0xF1: // current
       if (dev == dynSets.PVID)
@@ -810,6 +837,9 @@ void RecCAN(int packetSize) {
         st.lastPackMilliVolts = val;
       break;
     case 0xF4:
+      if (dev == dynSets.MainID) {
+        
+      }
       break;
   }
 }
@@ -820,6 +850,7 @@ void setup() {
   adc1_config_channel_atten(TEMP1, ADC_ATTEN_DB_11);
   pinMode(GREEN_LED, OUTPUT);
   pinMode(RESISTOR_PWR, OUTPUT);
+  pinMode(INV, INPUT);
   digitalWrite(GREEN_LED,1);
 
   BMSInitCom(ConSerData);
@@ -835,6 +866,7 @@ void setup() {
 
   if (!readEE("battS",(uint8_t*)&statSets,sizeof(statSets)))
     initstatSets();
+  SetAmpinvtVals();
 
   if (!readEE("battD",(uint8_t*)&dynSets,sizeof(dynSets)))
     initdynSets();
@@ -908,6 +940,22 @@ void loop() {
 
   if ((millis() - statusMS) > CHECKSTATUS)
     checkStatus();
+  bool AState = digitalRead(INV);
+  if (!AmpinvtSt && !AmpinvtStWait && (AmpinvtOn != AState)) {
+    AmpinvtSt = millis();
+    if (!AmpinvtSt) AmpinvtSt = 1; // 1 in 4billion chance of this happening;
+    digitalWrite(AmpinvtRelayPin,HIGH);
+  } else if (AmpinvtSt) {
+    uint32_t diff = millis() - AmpinvtSt;
+    if ((AmpinvtOn && (diff > 100*(uint32_t)AmpinvtRelayPtr->trip)) ||
+      (!AmpinvtOn && (diff > 100*(uint32_t)AmpinvtRelayPtr->rec))) {
+        digitalWrite(AmpinvtRelayPin,LOW);
+        AmpinvtSt = 0;
+        AmpinvtStWait = millis();
+        if (!AmpinvtStWait) AmpinvtStWait = 1;
+      }
+  } else if (AmpinvtStWait && (millis() - AmpinvtStWait) > 3000)
+    AmpinvtStWait = 0;
 
   BMSGetSerial();
 }

@@ -6,6 +6,7 @@
 #define GREEN_LED GPIO_NUM_23
 #define RESISTOR_PWR GPIO_NUM_32
 #define TEMP1 ADC1_CHANNEL_7
+#define INV GPIO_NUM_4
 #define BCOEF 4050
 
 // poll the PV current every 2 secs

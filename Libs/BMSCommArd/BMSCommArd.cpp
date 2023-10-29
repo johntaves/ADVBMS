@@ -72,7 +72,6 @@ void BMSInitStatus(BMSStatus *sp) {
   sp->milliRolls = 0;
   sp->watchDogHits = 0;
   sp->lastPackMilliVolts = 0xffff;
-  sp->maxDiffMilliVolts = 0;
   sp->lastPVMilliAmps=0;
   sp->lastMilliAmps=0;
   sp->doFullChg = true;

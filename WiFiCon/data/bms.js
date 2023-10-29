@@ -42,19 +42,6 @@ $(function () {
         });
         return false;
     });
-    $("#maxdiffvolts a").click(function(event) {
-        $.ajax({
-            type: "GET",
-            url: "/clrMaxDiff",
-            success: function (data) {
-                $("#savesuccess").show().delay(2000).fadeOut(500);
-            },
-            error: function (data) {
-                $("#saveerror").show().delay(2000).fadeOut(500);
-            }
-        });
-        return false;
-    });
     $("#lastEventTime a").click(function(event) {
         $.ajax({
             type: "GET",
@@ -438,7 +425,6 @@ function queryBMS() {
         if (data.minPackVState)
             dval = "under " + formatNum(packvolts,2);
         $("#packvolts .v").html(dval);
-        $("#maxdiffvolts .v").html(formatNum(Number(data.maxdiffvolts)/1000,2));
 
         var pc = Number(data.packcurrent);
         var pvc = Number(data.pvcurrent);
@@ -649,9 +635,10 @@ function setupRelays(rt) {
         var temp = $("#relay").clone();
         temp.attr({id: "relay"+rel});
         temp.find("[for='relayName']").text("J"+rel+":");
-        if (rel < 8) {
-            temp.find("#relayType option[value='S'],#relayType option[value='D'],#relayType option[value='T'],#relayType option[value='A']").hide();
-        }
+        if (rel < 10)
+            temp.find("#relayType option[value='S'],#relayType option[value='D'],#relayType option[value='T']").hide();
+        else
+            temp.find("#relayType option[value='A']").hide();
         $.each(['Name','DoSoC','Type','Trip','Rec','DoFrom','From'],function (index,value) {
             temp.find('#relay'+value).attr({id: "relay"+value+rel, name: "relay"+value+rel});
         });
