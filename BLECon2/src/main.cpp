@@ -62,27 +62,11 @@ bool inAlertState = true;
 NimBLEScan* pBLEScan;
 
 uint32_t lastShuntMillis;
-int64_t milliAmpMillis,battMilliAmpMillis;
-int curAdj;
-int64_t curAdjMilliAmpMillis[AVEADJAVGS];
+int32_t battCoulombs;
+int64_t coulombs;
 int lastTrip;
 
 //char (*__kaboom)[sizeof( BMSStatus )] = 1;
-
-void getAmps() {
-  uint32_t thisMillis = millis();
-  int64_t deltaMilliAmpMillis = (int64_t)st.lastMilliAmps * (thisMillis - lastShuntMillis);
-  milliAmpMillis += deltaMilliAmpMillis;
-
-  lastShuntMillis = thisMillis;
-  if (milliAmpMillis < 0) {
-    curAdjMilliAmpMillis[curAdj] -= milliAmpMillis;
-    milliAmpMillis = 0;
-  } else if (milliAmpMillis > battMilliAmpMillis) {
-    curAdjMilliAmpMillis[curAdj] += battMilliAmpMillis - milliAmpMillis;
-    milliAmpMillis = battMilliAmpMillis;
-  }
-}
 
 bool doShutOffNoStatus() {
   return !st.stateOfChargeValid || st.stateOfCharge < statSets.CellsOutMin || st.stateOfCharge > statSets.CellsOutMax;
@@ -93,19 +77,6 @@ void clearRelays() {
     digitalWrite(relayPins[i], LOW);
     st.previousRelayState[i] = LOW;
   }
-}
-
-void doAHCalcs() {
-  if (st.adjCnt < AVEADJAVGS)
-    st.adjCnt++;
-  for (int i=0;i<st.adjCnt;i++)
-    st.aveAdjMilliAmpMillis += curAdjMilliAmpMillis[i];
-  st.aveAdjMilliAmpMillis = st.adjCnt;
-  st.lastAdjMillAmpHrs = (int32_t)(curAdjMilliAmpMillis[curAdj] / ((int64_t)1000 * 60 * 60));
-  curAdj++;
-  if (curAdj == AVEADJAVGS)
-    curAdj = 0;
-  curAdjMilliAmpMillis[curAdj] = 0;
 }
 
 void SendEvent(uint8_t cmd,uint16_t volts=0,int8_t temp=0,int cell=0,uint16_t ms=0,int relay=0,int xtra=0) {
@@ -298,6 +269,16 @@ class adCB: public NimBLEAdvertisedDeviceCallbacks {
     }
 };
 
+void setOffset(int16_t val) {
+  dynSets.coulombOffset = ((battCoulombs*val)/100) - coulombs;
+  writeDynSets = true;
+}
+
+void setBattAH() {
+  battCoulombs = (uint64_t)dynSets.BattAH * (60 * 60); // convert to coulombs
+  setOffset(st.stateOfCharge);
+}
+
 void checkStatus()
 {
   statusCnt++;
@@ -334,16 +315,14 @@ void checkStatus()
     msg.cmd = NoPanic;
     BMSSend(&msg);
   }
-  if (battMilliAmpMillis != 0)
-    st.stateOfCharge = milliAmpMillis * 100 / battMilliAmpMillis;
-  //st.lastPackMilliVolts = INA.getBusMilliVolts(0);
+  st.stateOfCharge = ((coulombs + dynSets.coulombOffset) * 100) / battCoulombs;
 
   bool allovervoltrec = true,allundervoltrec = true,hitTop=false,hitUnder=false;
   bool allovertemprec = true,allundertemprec = true;
   //Loop through cells
   uint16_t totalVolts=0;
   int nCellsAlive = 0;
-  if ((millis() - mainShuntMS) > dynSets.ShuntErrTime) {
+  if ((millis() - mainShuntMS) > statSets.ShuntErrTime) {
     if (!shuntOverDue)
       SendEvent(ShuntOverDue);
     clearRelays();
@@ -456,28 +435,17 @@ void checkStatus()
   hitTop = hitTop && (int32_t)dynSets.TopAmps > (st.lastMilliAmps/1000) && (statusCnt == lastHitCnt); // We don't want to trigger a hittop 
   hitUnder = hitUnder && (int32_t)-dynSets.TopAmps < (st.lastMilliAmps/1000) && (statusCnt == lastHitCnt);
   if (hitTop) {
-    if (lastTrip != 0) {
-      if (milliAmpMillis < battMilliAmpMillis)
-        curAdjMilliAmpMillis[curAdj] += battMilliAmpMillis - milliAmpMillis;
-      if (lastTrip < 0)
-        st.BatAHMeasured = (milliAmpMillis + curAdjMilliAmpMillis[curAdj]) / ((uint64_t)1000 * 1000 * 60 * 60);
-      doAHCalcs();
-    }
+    if (lastTrip != 0)
+      st.lastAdjCoulomb = battCoulombs - (coulombs + dynSets.coulombOffset);
     lastTrip = 1;
-    milliAmpMillis = battMilliAmpMillis;
+    setOffset(100);
     st.stateOfChargeValid = true;
     st.doFullChg = false;
   }
   if (hitUnder) {
-    if (lastTrip != 0) {
-      if (milliAmpMillis > 0)
-        curAdjMilliAmpMillis[curAdj] -= milliAmpMillis;
-      if (lastTrip > 0)
-        st.BatAHMeasured = (battMilliAmpMillis - milliAmpMillis + curAdjMilliAmpMillis[curAdj]) / ((uint64_t)1000 * 1000 * 60 * 60);
-      doAHCalcs();
-    }
+    if (lastTrip > 0)
+        st.BatAHMeasured = (battCoulombs - (coulombs + dynSets.coulombOffset)) / ((uint64_t)60 * 60);
     lastTrip = -1;
-    milliAmpMillis = 0;
     st.stateOfChargeValid = true;
   }
   if (st.stateOfChargeValid && !st.doFullChg) {
@@ -559,31 +527,12 @@ void checkStatus()
   BMSSend(&st);
 }
 
-void setStateOfCharge(int64_t val,bool valid) {
-  milliAmpMillis = val;
-  st.stateOfChargeValid = valid;
-  curAdj = 0;
-  st.adjCnt = 0;
-  curAdjMilliAmpMillis[0] = 0;
-  lastTrip = 0;
-  st.aveAdjMilliAmpMillis = 0;
-  st.doFullChg = true;
-}
-
-void setBattAH() {
-  battMilliAmpMillis = (uint64_t)dynSets.BattAH * (1000 * 60 * 60) * 1000; // convert to milliampmilliseconds
-}
-
 void initdynSets() {
   dynSets.nCells=0;
-  dynSets.ShuntErrTime = 750;
-  dynSets.MainID = 3;
-  dynSets.PVID = 4;
   dynSets.BattAH = 1;
-  dynSets.savedTime = 0;
-  dynSets.milliAmpMillis = 0;
+  dynSets.coulombOffset = 0;
   dynSets.cellSets.cnt = 4;
-  dynSets.cellSets.delay = 0;
+  dynSets.cellSets.delay = 1;
   dynSets.cellSets.resPwrOn = false;
   dynSets.cellSets.time = 1000; // this will be like 2 secs, because cell goes to sleep and slows CPU by 2x
   dynSets.TopAmps = 6;
@@ -591,6 +540,9 @@ void initdynSets() {
 void initstatSets() {
   statSets.useBoardTemp = true;
   statSets.useCellC = true;
+  statSets.ShuntErrTime = 750;
+  statSets.MainID = 3;
+  statSets.PVID = 4;
   statSets.bdVolts = 3300;
   statSets.ChargePct = 100;
   statSets.ChargePctRec = 0;
@@ -628,10 +580,10 @@ void initstatSets() {
 void DoSetting(uint8_t cmd,uint16_t val) {
   switch (cmd) {
     case SetCurSOC:
-      setStateOfCharge((battMilliAmpMillis * val)/100,true);
-      break;
-    case ShuntErrTime:
-      dynSets.ShuntErrTime = val;
+      setOffset(val);
+      st.stateOfChargeValid = true;
+      lastTrip = 0;
+      st.doFullChg = true;
       break;
     case SetTopAmps:
       dynSets.TopAmps = val;
@@ -663,10 +615,6 @@ void DoSetting(uint8_t cmd,uint16_t val) {
       rp->off = !rp->off;
       }
       break;
-    case SetMainID: dynSets.MainID = val;
-    Serial.printf("M: %d\n",dynSets.MainID);
-     break;
-    case SetPVID: dynSets.PVID = val; break;
   }
   writeDynSets = true;
 }
@@ -816,36 +764,39 @@ void RecCAN(int packetSize) {
   int64_t val;
   uint8_t dev = id >> 8;
   uint8_t msg = id & 0xff;
+  if ((dev != statSets.PVID && dev != statSets.MainID) ||
+      (msg != 0xF1 && msg != 0xF3 && msg != 0xF4))
+      return;
   CanCnt++;
   if (msg < 0xfa) val = ReadIt(packetSize,1);
   else val = ReadIt(packetSize,-1);
 //  Serial.printf("l: %d, d: %d, m: %d, v: %d\n",packetSize,dev,msg,(int)val);
-  if (dev == dynSets.MainID)
+  if (dev == statSets.MainID)
     mainShuntMS = millis();
   switch (msg) {
     case 0xF1: // current
-      if (dev == dynSets.PVID)
+      if (dev == statSets.PVID)
         st.lastPVMilliAmps = val;
-      else if (dev == dynSets.MainID)
+      else if (dev == statSets.MainID)
         st.lastMilliAmps = val;
-      getAmps();
       break;
     case 0xF3: // voltage
-      if (dev == dynSets.PVID)
+      if (dev == statSets.PVID)
         st.lastPVMilliVolts = val;
-      else if (dev == dynSets.MainID)
+      else if (dev == statSets.MainID)
         st.lastPackMilliVolts = val;
       break;
     case 0xF4:
-      if (dev == dynSets.MainID) {
-        
-      }
+      if (dev == statSets.MainID)
+        coulombs = val;
       break;
   }
 }
 
 void setup() {
   Serial.begin(9600);
+  for (int i=0;i<MAX_CELLS;i++) cells[i].pClient = NULL;
+
   BMSADCInit();
   adc1_config_channel_atten(TEMP1, ADC_ATTEN_DB_11);
   pinMode(GREEN_LED, OUTPUT);
@@ -853,9 +804,18 @@ void setup() {
   pinMode(INV, INPUT);
   digitalWrite(GREEN_LED,1);
 
+  if (!readEE("battS",(uint8_t*)&statSets,sizeof(statSets)))
+    initstatSets();
+
+  if (!readEE("battD",(uint8_t*)&dynSets,sizeof(dynSets)))
+    initdynSets();
+
+  if (!readEE("ble",(uint8_t*)&cellBLE,sizeof(cellBLE)))
+    cellBLE.numCells = 0;
   BMSInitCom(ConSerData);
   Wire.begin();
-  for (int i=0;i<MAX_CELLS;i++) cells[i].pClient = NULL;
+
+  SetAmpinvtVals();
 
   NimBLEDevice::init("");
   emptyAddress = NimBLEAddress("00:00:00:00:00:00");
@@ -863,16 +823,6 @@ void setup() {
   pBLEScan = NimBLEDevice::getScan();
   pBLEScan->setAdvertisedDeviceCallbacks(new adCB(), false);
   pBLEScan->setMaxResults(0); // do not store the scan results, use callback only.
-
-  if (!readEE("battS",(uint8_t*)&statSets,sizeof(statSets)))
-    initstatSets();
-  SetAmpinvtVals();
-
-  if (!readEE("battD",(uint8_t*)&dynSets,sizeof(dynSets)))
-    initdynSets();
-
-  if (!readEE("ble",(uint8_t*)&cellBLE,sizeof(cellBLE)))
-    cellBLE.numCells = 0;
 
   Serial.printf("ncells %d\n",cellBLE.numCells);
   checkMissingCell();
@@ -887,7 +837,10 @@ void setup() {
   setBattAH();
 
   configTime(0,0,"pool.ntp.org");
-  setStateOfCharge((battMilliAmpMillis * 4)/5,false);
+  setOffset(80);
+  st.stateOfChargeValid = false;
+  lastTrip = 0;
+  st.doFullChg = true;
   InitCells();
   BMSSend(&statSets); 
   BMSSend(&dynSets); 
@@ -903,25 +856,10 @@ void setup() {
   CAN.onReceive(RecCAN);
 }
 
-time_t saveTimeDiff = 0;
 void loop() {
   if (st.lastMillis > millis()) st.milliRolls++;
   st.lastMillis = millis(); // for uptime to continue after 50 days
 
-  if (dynSets.savedTime) {
-    time_t now = time(nullptr);
-    if ((now - dynSets.savedTime) < 60) {
-      setStateOfCharge(dynSets.milliAmpMillis,true);
-      dynSets.savedTime = 0;
-      dynSets.milliAmpMillis = 0;
-      writeDynSets = true;
-    } else if (saveTimeDiff && saveTimeDiff < (now - dynSets.savedTime)) {
-      // difference is growing so give up
-      dynSets.savedTime = 0;
-      dynSets.milliAmpMillis = 0;
-      writeDynSets = true;
-    } else saveTimeDiff = now - dynSets.savedTime;
-  }
   if (writeDynSets) {
     writeEE("battD",(uint8_t*)&dynSets, sizeof(dynSets));
     Serial.println("Write Dyn");

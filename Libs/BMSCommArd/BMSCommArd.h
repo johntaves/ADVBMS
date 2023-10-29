@@ -28,8 +28,8 @@ enum Msg {
 
   FirstStr,Panic,DebugStr,LastStr,
 
-  FirstSetting,SetCurSOC,ShuntErrTime,SetBattAH,
-  SetNCells,SetMainID,SetPVID,
+  FirstSetting,SetCurSOC,SetBattAH,
+  SetNCells,
   SetRelayOff,SetTopAmps,
   LastSetting,
 
@@ -94,8 +94,7 @@ struct BMSStatus {
   int8_t curBoardTemp,milliRolls;
   uint16_t lastPackMilliVolts,lastPVMilliVolts;
   uint32_t BatAHMeasured,lastMillis;
-  int32_t lastPVMilliAmps,lastMilliAmps,lastAdjMillAmpHrs;
-  int64_t aveAdjMilliAmpMillis;
+  int32_t lastPVMilliAmps,lastMilliAmps,lastAdjCoulomb;
   Cells cells[MAX_CELLS];
   uint8_t previousRelayState[C_RELAY_TOTAL];
   uint16_t stateOfChargeValid:1,doFullChg:1,  maxCellVState:1,minCellVState:1,
@@ -103,7 +102,6 @@ struct BMSStatus {
     maxCellCState:1,minCellCState:1,
     maxPackCState:1,minPackCState:1,
     maxChargePctState:1;
-  uint8_t adjCnt;
 } __attribute__((packed));
 
 struct LimitConsts {
@@ -125,17 +123,15 @@ struct StatSetts {
   bool useCellC,useBoardTemp;
   uint16_t limits[2][2][2][2],FloatV,ChargeRate,bdVolts;
   RelaySettings relays[C_RELAY_TOTAL];
-  uint8_t ChargePct,ChargePctRec,CellsOutMin,CellsOutMax,CellsOutTime;
-  uint32_t slideMS;
+  uint8_t ChargePct,ChargePctRec,CellsOutMin,CellsOutMax,CellsOutTime,MainID,PVID;
+  uint32_t slideMS,ShuntErrTime;
 };
 
 struct DynSetts {
-  uint8_t crc,cmd,MainID,PVID;
+  uint8_t crc,cmd;
   uint16_t BattAH,TopAmps;
-  uint32_t ShuntErrTime;
   uint8_t nCells;
-  uint64_t milliAmpMillis;
-  time_t savedTime;
+  int64_t coulombOffset;
   CellSettings cellSets;
 };
 

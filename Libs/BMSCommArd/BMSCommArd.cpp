@@ -80,7 +80,7 @@ void BMSInitStatus(BMSStatus *sp) {
   sp->maxCellCState=false;sp->minCellCState=false;
   sp->maxPackCState=false;sp->minPackCState=false;
   sp->maxChargePctState=false;
-  sp->lastAdjMillAmpHrs = 0;
+  sp->lastAdjCoulomb = 0;
   sp->BatAHMeasured = 0;
   for (int i=0;i<C_RELAY_TOTAL;i++)
     sp->previousRelayState[i] = LOW;

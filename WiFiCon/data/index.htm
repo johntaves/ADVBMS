@@ -141,6 +141,18 @@
                     <label for="bdVolts">Main Board Volts (mV):</label>
                     <input type="number" name="bdVolts" id="bdVolts" value="" required="" maxlength="5" />
                 </div>
+                <div>
+                    <label for="ShuntErrTime">Shunt Fail Time (ms):</label>
+                    <input type="number" name="ShuntErrTime" value="500" maxlength="10" />
+                </div>
+                <div>
+                    <label for="MainID">Main ID:</label>
+                    <input type="number" name="MainID" value="3" maxlength="1" />
+                </div>
+                <div>
+                    <label for="PVID">PV ID:</label>
+                    <input type="number" name="PVID" value="4" maxlength="1" />
+                </div>
             If you turn off all of these, you'd better make sure it won't freeze or overheat.
                 <div><input id="useBoardTemp" name="useBoardTemp" type="checkbox" /><label for="useBoardTemp">Use board temperature: </label></div>
                 <div><input id="useCellC" name="useCellC" type="checkbox" /><label for="useCellC">Use cell temperatures: </label></div>
@@ -185,20 +197,7 @@
                         <label for="CurSOC">Capacity (%):</label>
                         <input type="number" name="CurSOC" id="CurSOC" value="" maxlength="3" /> Leave empty for no change.
                     </div>
-                    <div>
-                        <label for="ShuntErrTime">Shunt Fail Time (ms):</label>
-                        <input type="number" name="ShuntErrTime" value="500" maxlength="10" />
-                    </div>
-                    <div>
-                        <label for="MainID">Main ID:</label>
-                        <input type="number" name="MainID" value="3" maxlength="1" />
-                    </div>
-                    <div>
-                        <label for="PVID">PV ID:</label>
-                        <input type="number" name="PVID" value="4" maxlength="1" />
-                    </div>
                     <div><label for="socLastAdj">Last SoC Adj (mAh):</label>&nbsp;<span id="socLastAdj"></span></div>
-                    <div><label for="socAvgAdj">Ave SoC Adj (mAh:n):</label>&nbsp;<span id="socAvgAdj"></span></div>
                     <div><label for="BatAHMeasured">Measured Capacity (Ah):</label>&nbsp;<span id="BatAHMeasured"></span></div>
 
                     <div>
@@ -220,7 +219,7 @@
             <div id="cellDivRow"><div id="cellDel" style="display:none" class="stat">
                     <div class="h"><span cell></span>&nbsp;<a move>&lt</a>&nbsp;<a forget>Disc</a></div>bT:&nbsp;<span class="t">Temp</span></div></div>
             <form method="POST" action="savecellset" autocomplete="off">
-                <div><label for="cellCnt"># Samples:</label>
+            <div><label for="cellCnt"># Samples:</label>
                     <input name="cellCnt" type="number"/></div>
                     <div><label for="cellDelay">Pwr Delay:</label>
                         <input name="cellDelay" type="number"/></div>

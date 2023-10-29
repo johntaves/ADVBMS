@@ -364,15 +364,13 @@ void batt(AsyncWebServerRequest *request){
   JsonObject root = doc.to<JsonObject>();
   root["notRecd"] = notRecd;
 
-  root["ShuntErrTime"] = dynSets.ShuntErrTime;
-  root["MainID"] = dynSets.MainID;
-  root["PVID"] = dynSets.PVID;
+  root["ShuntErrTime"] = statSets.ShuntErrTime;
+  root["MainID"] = statSets.MainID;
+  root["PVID"] = statSets.PVID;
   root["BattAH"] = dynSets.BattAH;
   root["TopAmps"] = dynSets.TopAmps;
 
-  root["socLastAdj"] = st.lastAdjMillAmpHrs;
-  snprintf(spb,sizeof(spb),"%d:%d",(int)(st.aveAdjMilliAmpMillis / ((int64_t)1000 * 60 * 60)),st.adjCnt);
-  root["socAvgAdj"] = spb;
+  root["socLastAdj"] = st.lastAdjCoulomb;
   root["BatAHMeasured"] = st.BatAHMeasured > 0 ? String(st.BatAHMeasured) : String("N/A");
 
   root["nCells"] = dynSets.nCells;
@@ -766,6 +764,13 @@ void savelimits(AsyncWebServerRequest *request) {
   if (request->hasParam("CellsOutTime", true))
     statSets.CellsOutTime = request->getParam("CellsOutTime", true)->value().toInt();
 
+  if (request->hasParam("ShuntErrTime", true))
+    statSets.ShuntErrTime = request->getParam("ShuntErrTime", true)->value().toInt();
+  if (request->hasParam("MainID", true))
+    statSets.MainID = request->getParam("MainID", true)->value().toInt();
+  if (request->hasParam("PVID", true))
+    statSets.PVID = request->getParam("PVID", true)->value().toInt();
+
   if (!statSets.useCellC) {
     st.maxCellCState = false;
     st.minCellCState = false;
@@ -926,9 +931,6 @@ void saveItem(AsyncWebServerRequest *request,const char* n,uint8_t cmd,uint16_t 
 
 void savecapacity(AsyncWebServerRequest *request) {
   saveItem(request,"CurSOC",SetCurSOC,101);
-  saveItem(request,"ShuntErrTime",ShuntErrTime,dynSets.ShuntErrTime);
-  saveItem(request,"MainID",SetMainID,dynSets.MainID);
-  saveItem(request,"PVID", SetPVID,dynSets.PVID);
   saveItem(request,"BattAH",SetBattAH,dynSets.BattAH);
   saveItem(request,"TopAmps",SetTopAmps,dynSets.TopAmps);
   saveItem(request,"nCells",SetNCells,dynSets.nCells);
@@ -1047,7 +1049,7 @@ void checkTemps()
   // 157 is slope
   // 8inches is 100%
   uint32_t v = BMSReadVoltage(WATER,dynSets.cellSets.cnt);
-  Serial.printf("W: %d %d\n",v,((v * 300000) / (statSets.bdVolts - v)));
+//  Serial.printf("W: Cnt: %d %d %d\n",dynSets.cellSets.cnt,v,((v * 300000) / (statSets.bdVolts - v)));
   if (v > 1200)
     Water = 200;
   else Water = (165700 - ((v * 300000) / (statSets.bdVolts - v))) / (157*8);
@@ -1055,7 +1057,7 @@ void checkTemps()
   // min R 0, max R 90
   // 180 is known R, * 100 to get %
   v = BMSReadVoltage(GAS,dynSets.cellSets.cnt);
-  Serial.printf("G: %d %d\n",v,((v * 18000) / (statSets.bdVolts - v)));
+//  Serial.printf("G: %d %d %d\n",statSets.bdVolts,v,((v * 18000) / (statSets.bdVolts - v)));
   if (v > 1200)
     Gas = 200;
   else Gas = ((v * 18000) / (statSets.bdVolts - v)) / 90;
@@ -1322,7 +1324,10 @@ void setup() {
   configTzTime("PST8PDT,M3.2.0,M11.1.0","pool.ntp.org");
   AMsg msg;
   msg.cmd = StatQuery;
-  BMSWaitFor(&msg,StatSets);
+  Serial.println("waiting for static settings");
+  while (BMSWaitFor(&msg,StatSets))
+    Serial.println("Again");
+  Serial.println("Gottem");
   msg.cmd = DynQuery;
   BMSWaitFor(&msg,DynSets);
   for (int i=0;i<MAX_EVENTS;i++)

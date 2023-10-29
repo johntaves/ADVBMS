@@ -314,7 +314,6 @@ function getSettings(s) {
                 $("input[name='PVID']").val(data.PVID);
                 $("#BattAH").val(data.BattAH);
                 $("#socLastAdj").html(data.socLastAdj);
-                $("#socAvgAdj").html(data.socAvgAdj);
                 $("#BatAHMeasured").html(data.BatAHMeasured);
                 $("#nCells").val(data.nCells);
                 $("#CurSOC").val('');
