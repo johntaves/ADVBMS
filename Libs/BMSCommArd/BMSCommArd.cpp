@@ -34,20 +34,27 @@ uint8_t CRC8(const uint8_t *data,uint16_t length)
 
 bool readEE(const char* name,uint8_t *p,size_t s) {
   char buf[10];
+  pref.begin("ee");
   snprintf(buf,sizeof(buf),"%sC",name);
   if (!pref.getBytes(name,p,s))
     return false;
   uint8_t checksum = CRC8(p, s);
   uint8_t ck = pref.getUChar(buf);
+  pref.end();
   return checksum == ck;
 }
 
 void writeEE(const char* name,uint8_t *p,size_t s) {
   char buf[10];
+  pref.begin("ee");
   snprintf(buf,sizeof(buf),"%sC",name);
   uint8_t crc = CRC8(p, s);
-  pref.putBytes(name,p,s);
-  pref.putUChar(buf,crc);
+  size_t w = pref.putBytes(name,p,s);
+  if (w != s)
+    Serial.printf("%d %d Bytes failed to %s\n",s,w,name);
+  if (1 != pref.putUChar(buf,crc))
+    Serial.printf("CRC failed to %s\n",name);
+  pref.end();
 }
 
 void InitRelays(RelaySettings* rp,int num) {
@@ -128,8 +135,6 @@ void BMSInitCom(void (*func)(const AMsg* buf)) {
   Serial2.begin(CPUBAUD);
   dataSer.setStream(&Serial2); // start serial for output
   dataSer.setPacketHandler(&onSerData);
-  pref.begin("ee");
-
 }
 
 void BMSGetSerial() {

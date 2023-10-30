@@ -35,23 +35,23 @@ void canSender(uint16_t id,byte n,byte p[],int len) {
     CAN.endPacket();
 //    Serial.println ("done");
 }
-void canSetID(byte x) {
+void canSetID(byte n,byte x) {
     if (!CAN.beginPacket (0x3fA))
       Serial.println("Cannot begin packet"); 
     CAN.write(0x11);
     CAN.write(0x03);
     CAN.write(x);
-    CAN.write(0x04);
+    CAN.write(n);
     CAN.write(x);
     CAN.endPacket();
 }
-void canSetIDs() {
+void canSetIDs(byte n) {
   for (byte x = 0xF1;x< 0xf8;x++) {
-    canSetID(x);
+    canSetID(n,x);
   }
-  canSetID(0xFB);
-  canSetID(0xFC);
-  canSetID(0xFA);
+  canSetID(n,0xFB);
+  canSetID(n,0xFC);
+  canSetID(n,0xFA);
 }
 int64_t ReadIt(int len, int inc) {
   int st=0;
@@ -168,9 +168,10 @@ void loop() {
         byte y[] = { 0x0,0x1B };
         canSender(curId,0x12,y,2); }
         break; 
-      case 'd': canSetIDs(); break;
+      case 'd': canSetIDs(curId >> 8); break;
       case '3': curId = 0x300; Serial.println(curId); break;
       case '4': curId = 0x400; Serial.println(curId); break;
+      case '5': curId = 0x500; Serial.println(curId); break;
       case 's': 
         { byte x[] = {0x0,0xf};
         canSender(curId,0x10,x,2); break; }

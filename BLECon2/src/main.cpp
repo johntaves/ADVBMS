@@ -271,12 +271,10 @@ class adCB: public NimBLEAdvertisedDeviceCallbacks {
 
 void setOffset(int16_t val) {
   dynSets.coulombOffset = ((battCoulombs*val)/100) - coulombs;
-  writeDynSets = true;
 }
 
 void setBattAH() {
   battCoulombs = (uint64_t)dynSets.BattAH * (60 * 60); // convert to coulombs
-  setOffset(st.stateOfCharge);
 }
 
 void checkStatus()
@@ -326,6 +324,7 @@ void checkStatus()
     if (!shuntOverDue)
       SendEvent(ShuntOverDue);
     clearRelays();
+    st.lastPackMilliVolts = 0;
     shuntOverDue = true;
   } else
     shuntOverDue = false;
@@ -439,6 +438,7 @@ void checkStatus()
       st.lastAdjCoulomb = battCoulombs - (coulombs + dynSets.coulombOffset);
     lastTrip = 1;
     setOffset(100);
+    writeDynSets = true;
     st.stateOfChargeValid = true;
     st.doFullChg = false;
   }
@@ -591,6 +591,7 @@ void DoSetting(uint8_t cmd,uint16_t val) {
     case SetBattAH:
       dynSets.BattAH = val;
       setBattAH();
+      setOffset(st.stateOfCharge);
       break;
     case SetNCells:
       dynSets.nCells = val;
@@ -809,7 +810,7 @@ void setup() {
 
   if (!readEE("battD",(uint8_t*)&dynSets,sizeof(dynSets)))
     initdynSets();
-
+Serial.printf("delay %d\n",dynSets.cellSets.delay);
   if (!readEE("ble",(uint8_t*)&cellBLE,sizeof(cellBLE)))
     cellBLE.numCells = 0;
   BMSInitCom(ConSerData);
@@ -837,7 +838,6 @@ void setup() {
   setBattAH();
 
   configTime(0,0,"pool.ntp.org");
-  setOffset(80);
   st.stateOfChargeValid = false;
   lastTrip = 0;
   st.doFullChg = true;
