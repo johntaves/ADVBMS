@@ -94,7 +94,7 @@ struct BMSStatus {
   int8_t curBoardTemp,milliRolls;
   uint16_t lastPackMilliVolts,lastPVMilliVolts;
   uint32_t BatAHMeasured,lastMillis;
-  int32_t lastPVMilliAmps,lastMilliAmps,lastAdjCoulomb;
+  int32_t lastPVMilliAmps,lastInvMilliAmps,lastMilliAmps,lastAdjCoulomb;
   Cells cells[MAX_CELLS];
   uint8_t previousRelayState[C_RELAY_TOTAL];
   uint16_t stateOfChargeValid:1,doFullChg:1,  maxCellVState:1,minCellVState:1,
@@ -123,7 +123,7 @@ struct StatSetts {
   bool useCellC,useBoardTemp;
   uint16_t limits[2][2][2][2],FloatV,ChargeRate,bdVolts;
   RelaySettings relays[C_RELAY_TOTAL];
-  uint8_t ChargePct,ChargePctRec,CellsOutMin,CellsOutMax,CellsOutTime,MainID,PVID;
+  uint8_t ChargePct,ChargePctRec,CellsOutMin,CellsOutMax,CellsOutTime,MainID,PVID,InvID;
   uint32_t slideMS,ShuntErrTime;
 };
 

@@ -367,6 +367,7 @@ void batt(AsyncWebServerRequest *request){
   root["ShuntErrTime"] = statSets.ShuntErrTime;
   root["MainID"] = statSets.MainID;
   root["PVID"] = statSets.PVID;
+  root["InvID"] = statSets.InvID;
   root["BattAH"] = dynSets.BattAH;
   root["TopAmps"] = dynSets.TopAmps;
 
@@ -574,8 +575,14 @@ char *getUpTimeStr(uint32_t ms,uint8_t rolls) {
   int hrs = upsecs / (60*60);
   upsecs = upsecs % (60*60);
   int min = upsecs / 60;
+  int yrs = days / 365;
 
-  snprintf(spb,sizeof(spb),"%d:%02d:%02d:%02d",days,hrs,min,upsecs % 60);
+  if (yrs) 
+    snprintf(spb,sizeof(spb),"%dy %dd",yrs,days);
+  else if (days)
+    snprintf(spb,sizeof(spb),"%dd %dh",days, hrs);
+  else 
+    snprintf(spb,sizeof(spb),"%02d:%02d:%02d",hrs,min,upsecs % 60);
   return spb;
 }
 
@@ -639,6 +646,7 @@ void fillStatusDoc(JsonVariant root) {
   root["packvolts"] = st.lastPackMilliVolts;
   root["pvvolts"] = st.lastPVMilliVolts;
   root["pvcurrent"] = st.lastPVMilliAmps;
+  root["invcurrent"] = st.lastInvMilliAmps;
   snprintf(spb,sizeof(spb),"%d%%",st.stateOfCharge);
   root["soc"] = spb;
   root["socvalid"] = st.stateOfChargeValid;
@@ -770,6 +778,8 @@ void savelimits(AsyncWebServerRequest *request) {
     statSets.MainID = request->getParam("MainID", true)->value().toInt();
   if (request->hasParam("PVID", true))
     statSets.PVID = request->getParam("PVID", true)->value().toInt();
+  if (request->hasParam("InvID", true))
+    statSets.InvID = request->getParam("InvID", true)->value().toInt();
 
   if (!statSets.useCellC) {
     st.maxCellCState = false;

@@ -780,6 +780,8 @@ void RecCAN(int packetSize) {
         st.lastPVMilliAmps = val;
       else if (dev == statSets.MainID)
         st.lastMilliAmps = val;
+      else if (dev == statSets.InvID)
+        st.lastInvMilliAmps = val;
       break;
     case 0xF3: // voltage
       if (dev == statSets.PVID)

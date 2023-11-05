@@ -22,6 +22,7 @@
                 <div id="cellvolt" class="stat"><div class="h">Cell V</div><div class="v highlight"></div></div>
                 <div id="packcurrent" class="stat"><div class="h">Pack (A)</div><div class="v"></div></div>
                 <div id="pvcurrent" class="stat"><div class="h">PV (A)</div><div class="v"></div></div>
+                <div id="invcurrent" class="stat"><div class="h">Inv (A)</div><div class="v"></div></div>
                 <div id="loadcurrent" class="stat"><div class="h">Load (A)</div><div class="v"></div></div>
                 <div id="packvolts" class="stat"><div class="h">Pack (V)</div><div class="v"></div></div>
                 <div id="soc" class="stat"><div class="h" title="State of Charge">SoC</div><a href="" class="v"></a></div>
@@ -123,35 +124,39 @@
                 <div id="limit">
                 <label for="limitx"></label>
                     <input type="number" name="limitx" id="limitx" required=""></div>
-                <div><label class="field" for="ChargePct">Charge to (%):</label>
+                <div class="limits"><label class="field" for="ChargePct">Charge to (%):</label>
                     <input type="number" name="ChargePct" id="ChargePct" min="0" max="100" step="1">
-                    <label class="rec" for="ChargePctRec">Rec</label>
+                    <label class="rec" for="ChargePctRec">Rec:</label>
                     <input type="number" name="ChargePctRec" id="ChargePctRec" min="0" max="100" step="1"></div>
-                <div><label class="field" for="FloatV">Float (mV):</label>
+                <div class="limits"><label class="field" for="FloatV">Float (mV):</label>
                     <input type="number" name="FloatV" id="FloatV" min="0" max="5000" step="10" ></div>
-                <div><label class="field" for="ChargeRate">Max Charge Rate(A):</label>
+                <div class="limits"><label class="field" for="ChargeRate">Max Charge Rate(A):</label>
                     <input type="number" name="ChargeRate" id="ChargeRate" min="0" step="10" ></div>
-                <div><label class="field" for="CellsOutMin">Cells N/A min%:</label>
+                <div class="limits"><label class="field" for="CellsOutMin">Cells N/A min%:</label>
                     <input type="number" name="CellsOutMin" id="CellsOutMin" min="0" max="100" step="1" >
                     <label class="rec" for="CellsOutMax">max%:</label>
                     <input type="number" name="CellsOutMax" id="CellsOutMax" min="0" max="100" step="1" >
                     <label class="rec" for="CellsOutTime">secs:</label>
                     <input type="number" name="CellsOutTime" id="CellsOutTime" min="0" step="10" ></div>
-                <div>
-                    <label for="bdVolts">Main Board Volts (mV):</label>
+                <div class="limits">
+                    <label class="field" for="bdVolts">Main Board Volts (mV):</label>
                     <input type="number" name="bdVolts" id="bdVolts" value="" required="" maxlength="5" />
                 </div>
-                <div>
-                    <label for="ShuntErrTime">Shunt Fail Time (ms):</label>
+                <div class="limits">
+                    <label class="field" for="ShuntErrTime">Shunt Fail Time (ms):</label>
                     <input type="number" name="ShuntErrTime" value="500" maxlength="10" />
                 </div>
-                <div>
-                    <label for="MainID">Main ID:</label>
+                <div class="limits">
+                    <label class="field" for="MainID">Main ID:</label>
                     <input type="number" name="MainID" value="3" maxlength="1" />
                 </div>
-                <div>
-                    <label for="PVID">PV ID:</label>
+                <div class="limits">
+                    <label class="field" for="PVID">PV ID:</label>
                     <input type="number" name="PVID" value="4" maxlength="1" />
+                </div>
+                <div class="limits">
+                    <label class="field" for="InvID">Inv ID:</label>
+                    <input type="number" name="InvID" value="4" maxlength="1" />
                 </div>
             If you turn off all of these, you'd better make sure it won't freeze or overheat.
                 <div><input id="useBoardTemp" name="useBoardTemp" type="checkbox" /><label for="useBoardTemp">Use board temperature: </label></div>

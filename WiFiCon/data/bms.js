@@ -312,6 +312,7 @@ function getSettings(s) {
                 $("input[name='ShuntErrTime']").val(data.ShuntErrTime);
                 $("input[name='MainID']").val(data.MainID);
                 $("input[name='PVID']").val(data.PVID);
+                $("input[name='InvID']").val(data.InvID);
                 $("#BattAH").val(data.BattAH);
                 $("#socLastAdj").html(data.socLastAdj);
                 $("#BatAHMeasured").html(data.BatAHMeasured);
@@ -427,12 +428,14 @@ function queryBMS() {
 
         var pc = Number(data.packcurrent);
         var pvc = Number(data.pvcurrent);
+        var invc = Number(data.invcurrent);
         var lc = (pvc - pc)/1000;
         pc = pc / 1000;
-        pvc = pvc / 1000;
+        invc = invc / 1000;
         $("#loadcurrent .v").html(formatNum(lc,2));
         $("#packcurrent .v").html(formatNum(pc,2));
         $("#pvcurrent .v").html(formatNum(pvc,2));
+        $("#invcurrent .v").html(formatNum(invc,2));
         $("#soc .v").html(data.soc);
         $("#soc .v").removeClass("manoff");
         $("#soc .v").removeClass("fullChg");
