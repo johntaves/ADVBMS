@@ -172,6 +172,7 @@ void loop() {
       case '3': curId = 0x300; Serial.println(curId); break;
       case '4': curId = 0x400; Serial.println(curId); break;
       case '5': curId = 0x500; Serial.println(curId); break;
+      case '6': curId = 0x600; Serial.println(curId); break;
       case 's': 
         { byte x[] = {0x0,0xf};
         canSender(curId,0x10,x,2); break; }
