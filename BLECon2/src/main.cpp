@@ -55,7 +55,9 @@ BLESettings cellBLE;
 BMSStatus st;
 char spb[1024];
 
-uint32_t statusMS=0,connectMS=0,mainShuntMS=0,pvPollMS=0;
+uint32_t ShuntMS[3];
+enum { Main, PV, Inv };
+uint32_t statusMS=0,connectMS=0,pvPollMS=0;
 bool inAlertState = true;
 
 #define MAX_CELLV (statSets.limits[LimitConsts::Volt][LimitConsts::Cell][LimitConsts::Max][LimitConsts::Trip])
@@ -320,11 +322,16 @@ void checkStatus()
   //Loop through cells
   uint16_t totalVolts=0;
   int nCellsAlive = 0;
-  if ((millis() - mainShuntMS) > statSets.ShuntErrTime) {
+  if ((millis() - ShuntMS[PV]) > statSets.ShuntErrTime)
+    st.lastPVMilliAmps = 0;
+  if ((millis() - ShuntMS[Inv]) > statSets.ShuntErrTime)
+    st.lastInvMilliAmps = 0;
+  if ((millis() - ShuntMS[Main]) > statSets.ShuntErrTime) {
     if (!shuntOverDue)
       SendEvent(ShuntOverDue);
     clearRelays();
     st.lastPackMilliVolts = 0;
+    st.lastMilliAmps = 0;
     shuntOverDue = true;
   } else
     shuntOverDue = false;
@@ -773,20 +780,24 @@ void RecCAN(int packetSize) {
   else val = ReadIt(packetSize,-1);
 //  Serial.printf("l: %d, d: %d, m: %d, v: %d\n",packetSize,dev,msg,(int)val);
   if (dev == statSets.MainID)
-    mainShuntMS = millis();
+    ShuntMS[Main] = millis();
+  if (dev == statSets.PVID)
+    ShuntMS[PV] = millis();
+  if (dev == statSets.InvID)
+    ShuntMS[Inv] = millis();
   switch (msg) {
     case 0xF1: // current
       if (dev == statSets.PVID)
         st.lastPVMilliAmps = val;
-      else if (dev == statSets.MainID)
+      if (dev == statSets.MainID)
         st.lastMilliAmps = val;
-      else if (dev == statSets.InvID)
+      if (dev == statSets.InvID)
         st.lastInvMilliAmps = val;
       break;
     case 0xF3: // voltage
       if (dev == statSets.PVID)
         st.lastPVMilliVolts = val;
-      else if (dev == statSets.MainID)
+      if (dev == statSets.MainID)
         st.lastPackMilliVolts = val;
       break;
     case 0xF4:

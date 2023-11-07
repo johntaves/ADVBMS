@@ -428,14 +428,10 @@ function queryBMS() {
 
         var pc = Number(data.packcurrent);
         var pvc = Number(data.pvcurrent);
-        var invc = Number(data.invcurrent);
-        var lc = (pvc - pc)/1000;
-        pc = pc / 1000;
-        invc = invc / 1000;
-        $("#loadcurrent .v").html(formatNum(lc,2));
-        $("#packcurrent .v").html(formatNum(pc,2));
-        $("#pvcurrent .v").html(formatNum(pvc,2));
-        $("#invcurrent .v").html(formatNum(invc,2));
+        $("#loadcurrent .v").html(formatNum((pvc - pc) / 1000,2));
+        $("#packcurrent .v").html(formatNum(pc / 1000,2));
+        $("#pvcurrent .v").html(formatNum(pvc / 1000,2));
+        $("#invcurrent .v").html(formatNum(Number(data.invcurrent) / 1000,2));
         $("#soc .v").html(data.soc);
         $("#soc .v").removeClass("manoff");
         $("#soc .v").removeClass("fullChg");
