@@ -159,7 +159,7 @@ void loop() {
         canSender(curId,0x17,w,2);
         byte x[] = {0x2,0x0};
         canSender(curId,0x16,x,2);
-        byte y[] = { 0x9B,0x1B  };
+        byte y[] = { 0x03,0x0A  };
         canSender(curId,0x12,y,2); 
   //      clk=millis();
         }

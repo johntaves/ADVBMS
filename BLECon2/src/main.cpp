@@ -189,6 +189,7 @@ Serial.printf("Connecting: %s\n",cellBLE.addrs[i].toString().c_str());
           st.cells[i].exTemp = cd->tempExt;
           st.cells[i].bdTemp = cd->tempBd;
           st.cells[i].dumping = cd->drainSecs > 0;
+          st.cells[i].conn = true;
           cells[i].cellLast = millis();
         },false);
   cells[i].pSettings = pServ->getCharacteristic(NimBLEUUID((uint16_t)0x2B15)); // settings
@@ -341,6 +342,7 @@ void checkStatus()
       if (!cellsOverDue)
         SendEvent(CellsOverDue,st.cells[i].volts,st.cells[i].bdTemp,i,millis() - cells[i].cellLast);
       cellsOverDue = true;
+      st.cells[i].conn = false;
       continue;
     }
     nCellsAlive++;
@@ -556,7 +558,7 @@ void initstatSets() {
   statSets.ChargeRate = 0;
   statSets.CellsOutMax = 80;
   statSets.CellsOutMin = 30;
-  statSets.CellsOutTime = 120;
+  statSets.CellsOutTime = 12;
   statSets.FloatV = 3400;
   statSets.slideMS = 10000;
   InitRelays(&statSets.relays[0],C_RELAY_TOTAL);
