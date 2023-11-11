@@ -305,7 +305,6 @@ void events(AsyncWebServerRequest *request){
   DynamicJsonDocument doc(8192);
   JsonObject root = doc.to<JsonObject>();
   JsonArray data = root.createNestedArray("events");
-  Serial.printf("Es: %d\n",curEvent);
   for (int i=curEvent-1;i != curEvent;i--) {
     if (i < 0) i = MAX_EVENTS-1;
     Event* ep = &evts[i];
@@ -1053,7 +1052,6 @@ void checkTemps()
   Temp1 = BMSReadTemp(TEMP1,false,statSets.bdVolts,dispSets.t1B,dispSets.t1R,47000,dynSets.cellSets.cnt);
 //  Serial.printf("1: %d %d %d %f, ",vp,Temp1,rt,T);
   Temp2 = BMSReadTemp(TEMP2,false,statSets.bdVolts,dispSets.t2B,dispSets.t2R,47000,dynSets.cellSets.cnt);
-
   // 1657 is 0 inches
   // 3000 is known R
   // 157 is slope
