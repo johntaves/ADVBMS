@@ -640,9 +640,6 @@ void DoDump(DumpMsg *dm) {
     }
 }
 
-void JTPrint(const std::string &ad) {
-  Serial.printf("FFF: %s %d\n",ad.c_str(),ad.length());
-}
 void DoMove(SettingMsg *mp) {
   if (!mp->val)
     return;
@@ -829,7 +826,6 @@ void setup() {
   NimBLEDevice::init("");
   emptyAddress = NimBLEAddress("00:00:00:00:00:00");
 Serial.printf("EA: %s\n",emptyAddress.toString().c_str());
-Serial.printf("Shunt fail time %d :%d\n",statSets.ShuntErrTime,statSets.PVID);
   pBLEScan = NimBLEDevice::getScan();
   pBLEScan->setAdvertisedDeviceCallbacks(new adCB(), false);
   pBLEScan->setMaxResults(0); // do not store the scan results, use callback only.
