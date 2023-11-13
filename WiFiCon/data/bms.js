@@ -355,6 +355,7 @@ function getSettings(s) {
 }
 
 function formatNum(n,d) {
+    n= +n.toFixed(d) || 0;
     return n.toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: d });
 }
 
