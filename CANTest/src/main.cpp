@@ -129,6 +129,11 @@ void CANReceive(int packetSize) {
   }
 }
 
+void FindIt()
+{
+  
+}
+
 void setup() {
   Serial.begin(9600);
   pinMode(GPIO_NUM_23, OUTPUT);
@@ -176,6 +181,8 @@ void loop() {
       case 's': 
         { byte x[] = {0x0,0xf};
         canSender(curId,0x10,x,2); break; }
+      case 'F': FindIt();
+        break;
       default:
         break;
     }

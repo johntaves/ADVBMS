@@ -203,6 +203,10 @@ void limits(AsyncWebServerRequest *request){
   root["CellsOutMin"]=statSets.CellsOutMin;
   root["CellsOutMax"]=statSets.CellsOutMax;
   root["CellsOutTime"]=statSets.CellsOutTime;
+  root["ShuntErrTime"] = statSets.ShuntErrTime;
+  root["MainID"] = statSets.MainID;
+  root["PVID"] = statSets.PVID;
+  root["InvID"] = statSets.InvID;
   JsonObject obj = root.createNestedObject("limitSettings");
   for (int l0=0;l0<LimitConsts::Max0;l0++) {
     for (int l1=0;l1<LimitConsts::Max1;l1++) {
@@ -363,10 +367,6 @@ void batt(AsyncWebServerRequest *request){
   JsonObject root = doc.to<JsonObject>();
   root["notRecd"] = notRecd;
 
-  root["ShuntErrTime"] = statSets.ShuntErrTime;
-  root["MainID"] = statSets.MainID;
-  root["PVID"] = statSets.PVID;
-  root["InvID"] = statSets.InvID;
   root["BattAH"] = dynSets.BattAH;
   root["TopAmps"] = dynSets.TopAmps;
 

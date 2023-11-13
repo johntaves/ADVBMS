@@ -54,6 +54,7 @@ void writeEE(const char* name,uint8_t *p,size_t s) {
     Serial.printf("%d %d Bytes failed to %s\n",s,w,name);
   if (1 != pref.putUChar(buf,crc))
     Serial.printf("CRC failed to %s\n",name);
+  Serial.printf("Saved\n");
   pref.end();
 }
 

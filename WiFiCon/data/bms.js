@@ -309,10 +309,6 @@ function getSettings(s) {
                 $("#nTSets").val(data.nTSets);
                 setupTemps(data);
             } else if (s == "batt") {
-                $("input[name='ShuntErrTime']").val(data.ShuntErrTime);
-                $("input[name='MainID']").val(data.MainID);
-                $("input[name='PVID']").val(data.PVID);
-                $("input[name='InvID']").val(data.InvID);
                 $("#BattAH").val(data.BattAH);
                 $("#socLastAdj").html(data.socLastAdj);
                 $("#BatAHMeasured").html(data.BatAHMeasured);
@@ -324,6 +320,10 @@ function getSettings(s) {
                 $("input[name='resPwrOn']").prop("checked", data.resPwrOn);
                 $("input[name='cellTime']").val(data.cellTime);
             } else if (s == "limits") {
+                $("input[name='ShuntErrTime']").val(data.ShuntErrTime);
+                $("input[name='MainID']").val(data.MainID);
+                $("input[name='PVID']").val(data.PVID);
+                $("input[name='InvID']").val(data.InvID);
                 $("#ChargePct").val(data.ChargePct);
                 $("#ChargePctRec").val(data.ChargePctRec);
                 $("#FloatV").val(data.FloatV);

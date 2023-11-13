@@ -30,8 +30,6 @@ uint32_t AmpinvtStWait = 0; // start time of wait after toggled
 RelaySettings* AmpinvtRelayPtr;
 int AmpinvtRelayPin;
 
-int CanCnt=0;
-
 class MyClientCallback;
 
 struct Cell {
@@ -330,7 +328,6 @@ void checkStatus()
   if ((millis() - ShuntMS[Main]) > statSets.ShuntErrTime) {
     if (!shuntOverDue)
       SendEvent(ShuntOverDue);
-    clearRelays();
     st.lastPackMilliVolts = 0;
     st.lastMilliAmps = 0;
     shuntOverDue = true;
@@ -552,6 +549,7 @@ void initstatSets() {
   statSets.ShuntErrTime = 750;
   statSets.MainID = 3;
   statSets.PVID = 4;
+  statSets.InvID = 6;
   statSets.bdVolts = 3300;
   statSets.ChargePct = 100;
   statSets.ChargePctRec = 0;
@@ -774,38 +772,35 @@ void RecCAN(int packetSize) {
   int64_t val;
   uint8_t dev = id >> 8;
   uint8_t msg = id & 0xff;
-  if ((dev != statSets.PVID && dev != statSets.MainID) ||
-      (msg != 0xF1 && msg != 0xF3 && msg != 0xF4))
+  if ((dev != statSets.PVID && dev != statSets.MainID && dev != statSets.InvID) ||
+      (msg != 0xF1 && msg != 0xF3 && msg != 0xF4)) {
+    Serial.printf("Bad id: 0x%lx len: %d\n",id,packetSize);
       return;
-  CanCnt++;
+  }
   if (msg < 0xfa) val = ReadIt(packetSize,1);
   else val = ReadIt(packetSize,-1);
 //  Serial.printf("l: %d, d: %d, m: %d, v: %d\n",packetSize,dev,msg,(int)val);
-  if (dev == statSets.MainID)
-    ShuntMS[Main] = millis();
-  if (dev == statSets.PVID)
-    ShuntMS[PV] = millis();
-  if (dev == statSets.InvID)
-    ShuntMS[Inv] = millis();
-  switch (msg) {
-    case 0xF1: // current
-      if (dev == statSets.PVID)
-        st.lastPVMilliAmps = val;
-      if (dev == statSets.MainID)
+  if (dev == statSets.MainID) {
+    switch (msg) {
+      case 0xF1: // current
         st.lastMilliAmps = val;
-      if (dev == statSets.InvID)
-        st.lastInvMilliAmps = val;
-      break;
-    case 0xF3: // voltage
-      if (dev == statSets.PVID)
-        st.lastPVMilliVolts = val;
-      if (dev == statSets.MainID)
+        break;
+      case 0xF3: // voltage
         st.lastPackMilliVolts = val;
-      break;
-    case 0xF4:
-      if (dev == statSets.MainID)
+        break;
+      case 0xF4:
         coulombs = val;
-      break;
+        break;
+    }
+    ShuntMS[Main] = millis();
+  } else if (dev == statSets.PVID){
+    if (msg == 0xF1) // current
+      st.lastPVMilliAmps = val;
+    ShuntMS[PV] = millis();
+  } else if (dev == statSets.InvID) {
+    if (msg == 0xF1) // current
+      st.lastInvMilliAmps = val;
+    ShuntMS[Inv] = millis();
   }
 }
 
@@ -822,10 +817,8 @@ void setup() {
 
   if (!readEE("battS",(uint8_t*)&statSets,sizeof(statSets)))
     initstatSets();
-
   if (!readEE("battD",(uint8_t*)&dynSets,sizeof(dynSets)))
     initdynSets();
-Serial.printf("delay %d\n",dynSets.cellSets.delay);
   if (!readEE("ble",(uint8_t*)&cellBLE,sizeof(cellBLE)))
     cellBLE.numCells = 0;
   BMSInitCom(ConSerData);
@@ -835,7 +828,8 @@ Serial.printf("delay %d\n",dynSets.cellSets.delay);
 
   NimBLEDevice::init("");
   emptyAddress = NimBLEAddress("00:00:00:00:00:00");
-  Serial.printf("EA: %s\n",emptyAddress.toString().c_str());
+Serial.printf("EA: %s\n",emptyAddress.toString().c_str());
+Serial.printf("Shunt fail time %d :%d\n",statSets.ShuntErrTime,statSets.PVID);
   pBLEScan = NimBLEDevice::getScan();
   pBLEScan->setAdvertisedDeviceCallbacks(new adCB(), false);
   pBLEScan->setMaxResults(0); // do not store the scan results, use callback only.
