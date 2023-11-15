@@ -434,7 +434,11 @@ function queryBMS() {
         pvc = pvc / 1000;
         $("#packcurrent .v").html(formatNum(pc,2));
         $("#pvcurrent .v").html(formatNum(pvc,2));
-        $("#invcurrent .v").html(formatNum(Number(data.invcurrent) / 1000,2));
+        if (data.invcurrent){
+            $("#invcurrent").show();
+            $("#invcurrent .v").html(formatNum(Number(data.invcurrent) / 1000,2));
+        } else
+            $("#invcurrent").hide();
         $("#soc .v").html(data.soc);
         $("#soc .v").removeClass("manoff");
         $("#soc .v").removeClass("fullChg");
