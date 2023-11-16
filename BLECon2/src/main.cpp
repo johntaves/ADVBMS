@@ -63,7 +63,7 @@ NimBLEScan* pBLEScan;
 
 uint32_t lastShuntMillis;
 int32_t battCoulombs;
-int64_t coulombs;
+int64_t coulombs,adjCoulombs=0;
 int lastTrip;
 
 //char (*__kaboom)[sizeof( BMSStatus )] = 1;
@@ -314,6 +314,11 @@ void checkStatus()
     msg.cmd = NoPanic;
     BMSSend(&msg);
   }
+  if (lastTrip > 0 && (coulombs + dynSets.coulombOffset) > battCoulombs)
+  {
+    adjCoulombs = battCoulombs - (coulombs + dynSets.coulombOffset);
+    setOffset(100);
+  }
   st.stateOfCharge = ((coulombs + dynSets.coulombOffset) * 100) / battCoulombs;
 
   bool allovervoltrec = true,allundervoltrec = true,hitTop=false,hitUnder=false;
@@ -440,8 +445,8 @@ void checkStatus()
   hitTop = hitTop && (int32_t)dynSets.TopAmps > (st.lastMilliAmps/1000) && (statusCnt == lastHitCnt); // We don't want to trigger a hittop 
   hitUnder = hitUnder && (int32_t)-dynSets.TopAmps < (st.lastMilliAmps/1000) && (statusCnt == lastHitCnt);
   if (hitTop) {
-    if (lastTrip != 0)
-      st.lastAdjCoulomb = battCoulombs - (coulombs + dynSets.coulombOffset);
+    if (lastTrip > 0)
+      st.lastAdjCoulomb = battCoulombs - (coulombs + dynSets.coulombOffset) + adjCoulombs;
     lastTrip = 1;
     setOffset(100);
     writeDynSets = true;
