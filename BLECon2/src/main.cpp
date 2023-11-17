@@ -448,6 +448,7 @@ void checkStatus()
     if (lastTrip > 0)
       st.lastAdjCoulomb = battCoulombs - (coulombs + dynSets.coulombOffset) + adjCoulombs;
     lastTrip = 1;
+    adjCoulombs = 0;
     setOffset(100);
     writeDynSets = true;
     st.stateOfChargeValid = true;
