@@ -314,9 +314,10 @@ void checkStatus()
     msg.cmd = NoPanic;
     BMSSend(&msg);
   }
-  if (lastTrip > 0 && (coulombs + dynSets.coulombOffset) > battCoulombs)
+  if ((coulombs + dynSets.coulombOffset) > battCoulombs)
   {
-    adjCoulombs = battCoulombs - (coulombs + dynSets.coulombOffset);
+    if (lastTrip > 0)   
+      adjCoulombs = battCoulombs - (coulombs + dynSets.coulombOffset);
     setOffset(100);
   }
   st.stateOfCharge = ((coulombs + dynSets.coulombOffset) * 100) / battCoulombs;
