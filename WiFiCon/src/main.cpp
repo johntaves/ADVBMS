@@ -1052,15 +1052,15 @@ void checkTemps()
   Temp1 = BMSReadTemp(TEMP1,false,statSets.bdVolts,dispSets.t1B,dispSets.t1R,47000,dynSets.cellSets.cnt);
 //  Serial.printf("1: %d %d %d %f, ",vp,Temp1,rt,T);
   Temp2 = BMSReadTemp(TEMP2,false,statSets.bdVolts,dispSets.t2B,dispSets.t2R,47000,dynSets.cellSets.cnt);
-  // 1657 is 0 inches
+  // 2400 is 0 inches
   // 3000 is known R
-  // 157 is slope
+  // 150 is slope
   // 8inches is 100%
   uint32_t v = BMSReadVoltage(WATER,dynSets.cellSets.cnt);
 //  Serial.printf("W: Cnt: %d %d %d\n",dynSets.cellSets.cnt,v,((v * 300000) / (statSets.bdVolts - v)));
   if (v > 1200)
     Water = 200;
-  else Water = (165700 - ((v * 300000) / (statSets.bdVolts - v))) / (157*8);
+  else Water = (2400 - ((v * 300000) / (statSets.bdVolts - v))) / (150*12);
 
   // min R 0, max R 90
   // 180 is known R, * 100 to get %
