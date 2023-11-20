@@ -402,9 +402,11 @@ function queryBMS() {
         } else $("#watchDogHits").hide();
 
         var d = new Date(1000 * data.now);
-        $("#timenow").html(d.toLocaleTimeString());
-        $("#datenow").html(d.toLocaleDateString());
-        $("#version").html(data.version);
+        $("#timenow").html(d.toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit'
+          }).replace(" AM","").replace(" PM",""));
+        $("#datenow").html(d.toLocaleDateString([],{ day: 'numeric', month: 'numeric' }));
 
         $("#cellvolt").hide();
         if (data.maxCellVState || data.minCellVState)

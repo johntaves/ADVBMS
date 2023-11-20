@@ -594,7 +594,6 @@ void fillStatusDoc(JsonVariant root) {
   root["uptimew"] = getUpTimeStr(millis(),milliRolls);
   root["uptimec"] = getUpTimeStr(st.lastMillis,st.milliRolls);
   root["now"]=time(nullptr);
-  root["version"] = "V: 1.0";
   root["debugstr"] = debugstr;
   if (lastEventTime)
     root["lastEventTime"] = lastEventTime;
@@ -1052,7 +1051,7 @@ void checkTemps()
   Temp1 = BMSReadTemp(TEMP1,false,statSets.bdVolts,dispSets.t1B,dispSets.t1R,47000,dynSets.cellSets.cnt);
 //  Serial.printf("1: %d %d %d %f, ",vp,Temp1,rt,T);
   Temp2 = BMSReadTemp(TEMP2,false,statSets.bdVolts,dispSets.t2B,dispSets.t2R,47000,dynSets.cellSets.cnt);
-  // 2400 is 0 inches
+  // 2678 is 0 inches
   // 3000 is known R
   // 150 is slope
   // 8inches is 100%
@@ -1060,7 +1059,7 @@ void checkTemps()
 //  Serial.printf("W: Cnt: %d %d %d\n",dynSets.cellSets.cnt,v,((v * 300000) / (statSets.bdVolts - v)));
   if (v > 1200)
     Water = 200;
-  else Water = (2400 - ((v * 300000) / (statSets.bdVolts - v))) / (150*12);
+  else Water = 1000*(2678 - ((v * 3000) / (statSets.bdVolts - v))) / (1636*8);
 
   // min R 0, max R 90
   // 180 is known R, * 100 to get %
