@@ -616,6 +616,10 @@ void fillStatusDoc(JsonVariant root) {
     }
     if (strlen(rp->name) == 0 || rp->type == Relay_Direction)
       continue;
+    if (rp->type == Relay_Ampinvt){
+      sprintf(dodad,"relayGoal%d",i);
+      root[dodad] = st.ampInvtGoal?"ON":"OFF";
+    }
     sprintf(dodad,"relayStatus%d",i);
     root[dodad] = state==HIGH?"ON":"OFF";
     sprintf(dodad,"relayName%d",i);

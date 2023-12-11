@@ -580,13 +580,6 @@ function setRelayType() {
     if (val == "L" || val == "LP")
         $("#relayDoFrom"+r).show();
     else $("#relayDoFrom"+r).hide();
-    if (val == "A") {
-        $("label[for='relayTrip"+r+"']").html("On Hold Dur (100ms):");
-        $("label[for='relayRec"+r+"']").html("Off Hold Dur (100ms):");
-    } else {
-        $("label[for='relayTrip"+r+"']").html("Trip:");
-        $("label[for='relayRec"+r+"']").html("Rec:");
-    }
 }
 
 function setHiddenTime() {

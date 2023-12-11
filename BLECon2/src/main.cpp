@@ -24,7 +24,6 @@ bool shuntOverDue=true,cellsOverDue = true,loadsOff = true,chgOff = true
 uint32_t statusCnt=0,lastHitCnt=0,scanStart=0;
 Ticker watchDog;
 
-bool AmpinvtOn; // status goal
 uint32_t AmpinvtSt = 0; // start time of toggle
 uint32_t AmpinvtStWait = 0; // start time of wait after toggled
 RelaySettings* AmpinvtRelayPtr;
@@ -516,11 +515,11 @@ void checkStatus()
           break;
         case Relay_Ampinvt:
           if (isFromOff(rp))
-            AmpinvtOn = false;
+            st.ampInvtGoal = false;
           else if (rp->doSoC && (!st.stateOfChargeValid || st.stateOfCharge < rp->trip))
-            AmpinvtOn = false; // turn it off
+            st.ampInvtGoal = false; // turn it off
           else if (rp->doSoC && st.stateOfChargeValid && st.stateOfCharge > rp->rec)
-            AmpinvtOn = true; // turn it on
+            st.ampInvtGoal = true; // turn it on
           break;
       }
   }
@@ -891,14 +890,13 @@ void loop() {
   if ((millis() - statusMS) > CHECKSTATUS)
     checkStatus();
   bool AState = digitalRead(INV);
-  if (!AmpinvtSt && !AmpinvtStWait && (AmpinvtOn != AState)) {
+  if (!AmpinvtSt && !AmpinvtStWait && (st.ampInvtGoal != AState)) {
     AmpinvtSt = millis();
     if (!AmpinvtSt) AmpinvtSt = 1; // 1 in 4billion chance of this happening;
     digitalWrite(AmpinvtRelayPin,HIGH);
   } else if (AmpinvtSt) {
     uint32_t diff = millis() - AmpinvtSt;
-    if ((AmpinvtOn && (diff > 100*(uint32_t)AmpinvtRelayPtr->trip)) ||
-      (!AmpinvtOn && (diff > 100*(uint32_t)AmpinvtRelayPtr->rec))) {
+    if (diff > 2000) {
         digitalWrite(AmpinvtRelayPin,LOW);
         AmpinvtSt = 0;
         AmpinvtStWait = millis();
