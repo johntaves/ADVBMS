@@ -480,9 +480,12 @@ void checkStatus()
   {
     RelaySettings *rp = &statSets.relays[y];
     relay[y] = st.previousRelayState[y]; // don't change it because we might be in the SOC trip/rec area
-    if (rp->off)
-      relay[y] = LOW;
-    else
+    if (rp->off) {
+      if (rp->type == Relay_Ampinvt)
+        st.ampInvtGoal = false;
+      else
+        relay[y] = LOW;
+    } else
       switch (rp->type) {
         default:
           break;
@@ -516,9 +519,9 @@ void checkStatus()
         case Relay_Ampinvt:
           if (isFromOff(rp))
             st.ampInvtGoal = false;
-          else if (rp->doSoC && (!st.stateOfChargeValid || st.stateOfCharge < rp->trip))
+          else if (!st.stateOfChargeValid || st.stateOfCharge < rp->trip)
             st.ampInvtGoal = false; // turn it off
-          else if (rp->doSoC && st.stateOfChargeValid && st.stateOfCharge > rp->rec)
+          else if (st.stateOfChargeValid && st.stateOfCharge > rp->rec)
             st.ampInvtGoal = true; // turn it on
           break;
       }
