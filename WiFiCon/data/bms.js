@@ -479,6 +479,11 @@ function queryBMS() {
         else $("#Temp2").show();
         $("#Temp2 .v").html(val);
 
+        val = data.AmpTemp;
+        if (val == -300) $("#AmpTemp").hide();
+        else $("#AmpTemp").show();
+        $("#AmpTemp .v").html(val);
+
         val = data.Water;
         if (val == 200) $("#Water").hide();
         else $("#Water").show();

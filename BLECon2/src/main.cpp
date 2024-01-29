@@ -791,6 +791,9 @@ void RecCAN(int packetSize) {
       case 0xF1: // current
         st.lastMilliAmps = val;
         break;
+      case 0xF2:
+        st.ampTemp = val;
+        break;
       case 0xF3: // voltage
         st.lastPackMilliVolts = val;
         break;
