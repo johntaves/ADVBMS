@@ -778,8 +778,7 @@ void RecCAN(int packetSize) {
   int64_t val;
   uint8_t dev = id >> 8;
   uint8_t msg = id & 0xff;
-  if ((dev != statSets.PVID && dev != statSets.MainID && dev != statSets.InvID) ||
-      (msg != 0xF1 && msg != 0xF3 && msg != 0xF4)) {
+  if (dev != statSets.PVID && dev != statSets.MainID && dev != statSets.InvID) {
     Serial.printf("Bad id: 0x%lx len: %d\n",id,packetSize);
       return;
   }

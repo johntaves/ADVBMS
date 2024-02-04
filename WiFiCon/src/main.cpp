@@ -653,7 +653,7 @@ void fillStatusDoc(JsonVariant root) {
   root["soc"] = spb;
   root["socvalid"] = st.stateOfChargeValid;
   root["BoardTemp"] = fromCel(st.curBoardTemp);
-  root["AmpTemp"] = fromCel(st.ampTemp);
+  root["AmpTemp"] = fromCel(st.ampTemp/10);
   root["Temp1"] = fromCel(Temp1);
   root["Temp2"] = fromCel(Temp2);
   root["Water"] = Water;
