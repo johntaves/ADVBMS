@@ -146,6 +146,7 @@ void setup() {
   } else
     Serial.println("Started CAN");
     CAN.onReceive(CANReceive);
+  Serial.println("Hi");
 }
 
 void loop() {
@@ -160,11 +161,11 @@ void loop() {
       case 'a': canSender(curId,0x1,NULL,0); break;
       case 'f': canSender(curId,0x30,NULL,0); break;
       case 'A': {
-        byte w[] = {0x45,0x7A };
+        byte w[] = {0x44,0x5C };
         canSender(curId,0x17,w,2);
         byte x[] = {0x2,0x0};
         canSender(curId,0x16,x,2);
-        byte y[] = { 0x03,0x0A  };
+        byte y[] = { 0x03,0x1A  };
         canSender(curId,0x12,y,2); 
   //      clk=millis();
         }

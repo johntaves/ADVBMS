@@ -480,9 +480,12 @@ void checkStatus()
   {
     RelaySettings *rp = &statSets.relays[y];
     relay[y] = st.previousRelayState[y]; // don't change it because we might be in the SOC trip/rec area
-    if (rp->off)
-      relay[y] = LOW;
-    else
+    if (rp->off) {
+      if (rp->type == Relay_Ampinvt)
+        st.ampInvtGoal = false;
+      else
+        relay[y] = LOW;
+    } else
       switch (rp->type) {
         default:
           break;
@@ -516,9 +519,9 @@ void checkStatus()
         case Relay_Ampinvt:
           if (isFromOff(rp))
             st.ampInvtGoal = false;
-          else if (rp->doSoC && (!st.stateOfChargeValid || st.stateOfCharge < rp->trip))
+          else if (!st.stateOfChargeValid || st.stateOfCharge < rp->trip)
             st.ampInvtGoal = false; // turn it off
-          else if (rp->doSoC && st.stateOfChargeValid && st.stateOfCharge > rp->rec)
+          else if (st.stateOfChargeValid && st.stateOfCharge > rp->rec)
             st.ampInvtGoal = true; // turn it on
           break;
       }
@@ -775,8 +778,7 @@ void RecCAN(int packetSize) {
   int64_t val;
   uint8_t dev = id >> 8;
   uint8_t msg = id & 0xff;
-  if ((dev != statSets.PVID && dev != statSets.MainID && dev != statSets.InvID) ||
-      (msg != 0xF1 && msg != 0xF3 && msg != 0xF4)) {
+  if (dev != statSets.PVID && dev != statSets.MainID && dev != statSets.InvID) {
     Serial.printf("Bad id: 0x%lx len: %d\n",id,packetSize);
       return;
   }
@@ -787,6 +789,9 @@ void RecCAN(int packetSize) {
     switch (msg) {
       case 0xF1: // current
         st.lastMilliAmps = val;
+        break;
+      case 0xF2:
+        st.ampTemp = val;
         break;
       case 0xF3: // voltage
         st.lastPackMilliVolts = val;

@@ -103,6 +103,7 @@ struct BMSStatus {
     maxPackCState:1,minPackCState:1,
     maxChargePctState:1,
     ampInvtGoal:1;
+  int16_t ampTemp;
 } __attribute__((packed));
 
 struct LimitConsts {
