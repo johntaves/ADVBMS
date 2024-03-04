@@ -1061,7 +1061,7 @@ void checkTemps()
   // 8inches is 100%
   uint32_t v = BMSReadVoltage(WATER,dynSets.cellSets.cnt);
 //  Serial.printf("W: Cnt: %d %d %d\n",dynSets.cellSets.cnt,v,((v * 300000) / (statSets.bdVolts - v)));
-  if (v > 1200)
+  if (v > 1210)
     Water = 200;
   else Water = 1000*(2678 - ((v * 3000) / (statSets.bdVolts - v))) / (1636*8);
 
@@ -1069,9 +1069,9 @@ void checkTemps()
   // 180 is known R, * 100 to get %
   v = BMSReadVoltage(GAS,dynSets.cellSets.cnt);
 //  Serial.printf("G: %d %d %d\n",statSets.bdVolts,v,((v * 18000) / (statSets.bdVolts - v)));
-  if (v > 1200)
+  if (v > 1210)
     Gas = 200;
-  else Gas = ((v * 18000) / (statSets.bdVolts - v)) / 90;
+  else Gas = ((v * 18000) / (statSets.bdVolts - v)) / 120; // should be a 90ohm
 //  Serial.printf("2: %d %d\n",vp,Temp2);
   if (!dynSets.cellSets.resPwrOn)
     digitalWrite(RESISTOR_PWR,LOW);
