@@ -747,14 +747,13 @@ void savelimits(AsyncWebServerRequest *request) {
           sprintf(name,"%d%d%d%d",l0,l1,l2,l3);
           if (request->hasParam(name, true, false)) {
             if (l0 == LimitConsts::Temp)
-              statSets.limits[l0][l1][l2][l3] = toCel(request->getParam(name, true, false)->value());
+              statSets.limits[l0][l1][l2][l3] = request->getParam(name, true, false)->value().toInt();
             else statSets.limits[l0][l1][l2][l3] = request->getParam(name, true, false)->value().toInt();
           }
         }
       }
     }
   }
-
   statSets.useBoardTemp = request->hasParam("useBoardTemp", true) && request->getParam("useBoardTemp", true)->value().equals("on");
   statSets.useCellC = request->hasParam("useCellC", true) && request->getParam("useCellC", true)->value().equals("on");
 
