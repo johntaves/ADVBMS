@@ -569,12 +569,14 @@ void doMove(AsyncWebServerRequest *request) {
 }
 char *getUpTimeStr(uint32_t ms,uint8_t rolls) {
   uint32_t upsecs = (rolls * 4294967ul) + (ms/1000ul);
+  int yrs = upsecs / (365ul*24*60*60);
+  upsecs %= (365ul*24*60*60);
   int days = upsecs / (24ul*60*60);
-  upsecs = upsecs % (24ul*60*60);
+  upsecs %= (24ul*60*60);
   int hrs = upsecs / (60*60);
-  upsecs = upsecs % (60*60);
+  upsecs %= (60*60);
   int min = upsecs / 60;
-  int yrs = days / 365;
+  upsecs %= 60;
 
   if (yrs) 
     snprintf(spb,sizeof(spb),"%dy %dd",yrs,days);
