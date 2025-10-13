@@ -84,7 +84,7 @@ enum {
 };
 
 struct Cells {
-  uint16_t volts:14,conn:1,dumping:1;
+  uint16_t volts:14,conn:1,draining:1;
   int8_t exTemp,bdTemp;
 } __attribute__((packed));
 
@@ -123,7 +123,7 @@ struct RelaySettings {
 struct StatSetts {
   uint8_t crc,cmd;
   bool useCellC,useBoardTemp;
-  uint16_t limits[2][2][2][2],FloatV,ChargeRate,bdVolts;
+  uint16_t limits[2][2][2][2],unused,ChargeRate,bdVolts;
   RelaySettings relays[C_RELAY_TOTAL];
   uint8_t ChargePct,ChargePctRec,CellsOutMin,CellsOutMax,CellsOutTime,MainID,PVID,InvID;
   uint32_t slideMS,ShuntErrTime;

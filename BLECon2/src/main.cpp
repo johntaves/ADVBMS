@@ -185,7 +185,7 @@ Serial.printf("Connecting: %s\n",cellBLE.addrs[i].toString().c_str());
           st.cells[i].volts = cd->volts;
           st.cells[i].exTemp = cd->tempExt;
           st.cells[i].bdTemp = cd->tempBd;
-          st.cells[i].dumping = cd->drainSecs > 0;
+          st.cells[i].draining = cd->draining;
           st.cells[i].conn = true;
           cells[i].cellLast = millis();
         },false);
@@ -207,7 +207,7 @@ void InitCell(int i) {
   pC->setClientCallbacks(cells[i].pCB,true);
   pC->setConnectionParams(IntervalToms(100),IntervalToms(100),25,600);
   cells[i].pClient = pC;
-  st.cells[i].dumping = false;
+  st.cells[i].draining = false;
   cells[i].cellDumpSecs = 0;
 }
 void InitCells() {
@@ -548,6 +548,7 @@ void initdynSets() {
   dynSets.coulombOffset = 0;
   dynSets.cellSets.cnt = 4;
   dynSets.cellSets.delay = 1;
+  dynSets.cellSets.drainV = 3400;
   dynSets.cellSets.resPwrOn = false;
   dynSets.cellSets.time = 1000; // this will be like 2 secs, because cell goes to sleep and slows CPU by 2x
   dynSets.TopAmps = 6;
@@ -566,7 +567,6 @@ void initstatSets() {
   statSets.CellsOutMax = 80;
   statSets.CellsOutMin = 30;
   statSets.CellsOutTime = 12;
-  statSets.FloatV = 3400;
   statSets.slideMS = 10000;
   InitRelays(&statSets.relays[0],C_RELAY_TOTAL);
   for (int i=0;i<C_RELAY_TOTAL;i++) {

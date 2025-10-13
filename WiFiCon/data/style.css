@@ -14,7 +14,7 @@ body {
 }
 .manoff { background-color: gray;}
 .fullChg { background-color: lightgray;}
-.dumping { background-color: pink;}
+.draining { background-color: pink;}
 
 .time { width: 6em; }
 .tdLab {text-align: right;}

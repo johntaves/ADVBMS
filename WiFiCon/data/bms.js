@@ -196,7 +196,7 @@ function initCells() {
         theA.click(function () {
             var r = $(this).attr("cell");
             var min = 0;
-            if (!$("#cellTV"+r+" .v").hasClass("dumping"))
+            if (!$("#cellTV"+r+" .v").hasClass("draining"))
                min = (Number($('#DurH').val()) * 60) + Number($('#DurM').val());
             $.ajax({
                 type: "POST",
@@ -318,6 +318,7 @@ function getSettings(s) {
                 $("input[name='cellCnt']").val(data.cellCnt);
                 $("input[name='cellDelay']").val(data.cellDelay);
                 $("input[name='resPwrOn']").prop("checked", data.resPwrOn);
+                $("input[name='drainV']").val(data.drainV);
                 $("input[name='cellTime']").val(data.cellTime);
             } else if (s == "limits") {
                 $("input[name='ShuntErrTime']").val(data.ShuntErrTime);
@@ -326,7 +327,6 @@ function getSettings(s) {
                 $("input[name='InvID']").val(data.InvID);
                 $("#ChargePct").val(data.ChargePct);
                 $("#ChargePctRec").val(data.ChargePctRec);
-                $("#FloatV").val(data.FloatV);
                 $("#ChargeRate").val(data.ChargeRate);
                 $("#CellsOutMin").val(data.CellsOutMin);
                 $("#CellsOutMax").val(data.CellsOutMax);
@@ -539,11 +539,11 @@ function queryBMS() {
             } else cell.text('');
             var inp = $("#cellMove"+value.c);
             if (value.d) {
-                cell.addClass("dumping");
-                inp.addClass("dumping");
+                cell.addClass("draining");
+                inp.addClass("draining");
             } else {
-                cell.removeClass("dumping");
-                inp.removeClass("dumping");
+                cell.removeClass("draining");
+                inp.removeClass("draining");
             }
         });
         myChart.update();
@@ -591,10 +591,10 @@ function setHiddenTime() {
     var d = new Date("1/1/22 " + $(this).val());
     var m = (d.getHours() * 60) + d.getMinutes();
     if (Number.isNaN(m)) {
-        $(this).addClass('dumping');
+        $(this).addClass('draining');
         return;
     }
-    $(this).removeClass('dumping');
+    $(this).removeClass('draining');
     $("#"+$(this).attr('id').replace('Str','')).val(m);
 }
 

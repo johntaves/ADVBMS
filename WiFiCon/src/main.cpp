@@ -198,7 +198,6 @@ void limits(AsyncWebServerRequest *request){
   root["bdVolts"]=statSets.bdVolts;
   root["ChargePct"]=statSets.ChargePct;
   root["ChargePctRec"]=statSets.ChargePctRec;
-  root["FloatV"]=statSets.FloatV;
   root["ChargeRate"]=statSets.ChargeRate;
   root["CellsOutMin"]=statSets.CellsOutMin;
   root["CellsOutMax"]=statSets.CellsOutMax;
@@ -378,6 +377,7 @@ void batt(AsyncWebServerRequest *request){
   root["cellCnt"] = dynSets.cellSets.cnt;
   root["cellDelay"] = dynSets.cellSets.delay;
   root["resPwrOn"] = dynSets.cellSets.resPwrOn;
+  root["drainV"] = dynSets.cellSets.drainV;
   root["cellTime"] = dynSets.cellSets.time;
 
   serializeJson(doc, *response);
@@ -680,7 +680,7 @@ void fillStatusDoc(JsonVariant root) {
     cell["v"] = st.cells[i].volts;
     cell["t"] = fromCel(st.cells[i].exTemp);
     cell["bt"] = fromCel(st.cells[i].bdTemp);
-    cell["d"] = st.cells[i].dumping;
+    cell["d"] = st.cells[i].draining;
     cell["l"] = !st.cells[i].conn;
   }
 }
@@ -765,8 +765,6 @@ void savelimits(AsyncWebServerRequest *request) {
     statSets.bdVolts = request->getParam("bdVolts", true)->value().toInt();
   if (request->hasParam("ChargePctRec", true))
     statSets.ChargePctRec = request->getParam("ChargePctRec", true)->value().toInt();
-  if (request->hasParam("FloatV", true))
-    statSets.FloatV = request->getParam("FloatV", true)->value().toInt();
   if (request->hasParam("ChargeRate", true))
     statSets.ChargeRate = request->getParam("ChargeRate", true)->value().toInt();
   if (request->hasParam("CellsOutMin", true))
@@ -926,6 +924,7 @@ void savecellset(AsyncWebServerRequest *request) {
   msg.cellSets.delay = request->getParam("cellDelay", true)->value().toInt();
   msg.cellSets.resPwrOn = request->hasParam("resPwrOn", true) && request->getParam("resPwrOn", true)->value().equals("on");
   msg.cellSets.time = request->getParam("cellTime", true)->value().toInt();
+  msg.cellSets.drainV = request->getParam("drainV", true)->value().toInt();
   dynSets.cellSets = msg.cellSets;
   BMSSend(&msg);
   sendSuccess(request);
