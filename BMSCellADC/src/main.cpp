@@ -159,6 +159,7 @@ extern "C" void app_main() {
   ads1115_t ads = ads1115_config(i2c_master_port,0x48);
   ads1115_set_pga(&ads,ADS1115_FSR_6_144);
   ads1115_set_mode(&ads,ADS1115_MODE_SINGLE);
+  ads1115_set_mux(&ads,   ADS1115_MUX_2_GND);
 
   cs.volts=ads1115_get_mV(&ads);
 
