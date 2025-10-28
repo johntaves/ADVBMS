@@ -10,6 +10,7 @@
 #include "driver/gpio.h"
 #include <NimBLEDevice.h>
 #include <BMSAll.h>
+#include <BMSADC.h>
 #include <CellData.h>
 #include "ads1115.h"
 
@@ -27,8 +28,11 @@ NimBLEServer *pServer;
 bool devConn=false,ledOn=false;
 CellSettings cellSett;
 CellStatus cs;
-uint32_t drainMSecs = 0,startDrainMSecs=0,goalDrainMSecs=0;
-uint32_t slTime=0,awTime=0,acTime=0;
+uint32_t startDrainMSecs=0,goalDrainMSecs=0;
+uint32_t acTime=0;
+i2c_config_t conf;
+int i2c_master_port = 0;
+ads1115_t ads;
 
 class MyServerCallbacks: public NimBLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
@@ -79,22 +83,30 @@ class DumpCallback: public NimBLECharacteristicCallbacks {
     if (goalDrainMSecs > 604800000)
       goalDrainMSecs = 0; // 1 week, we don't believe it
     startDrainMSecs = millis();
-    fprintf(stderr,"D: %d\n",goalDrainMSecs);
     CheckDrain();
   }
 };
 
-void readData(ads1115_t * ads) {
+void readData() {
   gpio_set_level(GLED, HIGH);
   gpio_set_level(BATTV, HIGH);
   gpio_set_level(TEMPPWR, HIGH);
+  uint16_t mV;
+  i2c_driver_install(i2c_master_port, conf.mode, 0, 0, 0);
+
   uint32_t ct = millis();
   while ((millis() - ct) < cellSett.delay) ; // We don't want a vtaskdelay, because that will shut down things
-fprintf(stderr,"reading\n");
-  cs.volts=ads1115_get_mV(ads);
-fprintf(stderr,"read %d\n",cs.volts);
-//  cs.tempExt = BMSReadTemp(TExADC,false,cs.volts,BCOEF,47000,51000,cellSett.cnt);
-//  cs.tempBd = BMSReadTemp(TBdADC,false,cs.volts,BCOEF,47000,51000,cellSett.cnt);
+  
+  ads1115_set_mux(&ads, ADS1115_MUX_2_GND);
+  cs.volts=ads1115_get_mV(&ads);
+
+  ads1115_set_mux(&ads, ADS1115_MUX_0_GND);
+  mV=ads1115_get_mV(&ads);
+  cs.tempExt = BMSComputeTemp(mV,false,cs.volts,BCOEF,47000,51000);
+
+  ads1115_set_mux(&ads, ADS1115_MUX_1_GND);
+  mV=ads1115_get_mV(&ads);
+  cs.tempBd = BMSComputeTemp(mV,false,cs.volts,BCOEF,47000,51000);
   if (!cellSett.resPwrOn) {
     gpio_set_level(TEMPPWR,LOW);
     gpio_set_level(BATTV,LOW);
@@ -103,7 +115,8 @@ fprintf(stderr,"read %d\n",cs.volts);
   gpio_set_level(GLED,LOW);
 }
 
-extern "C" void app_main() {   
+extern "C" void app_main() {
+  fprintf(stderr,"alive\n");
   gpio_set_direction(GLED, GPIO_MODE_OUTPUT);
         gpio_set_level(GLED,HIGH);
   gpio_set_direction(BATTV, GPIO_MODE_OUTPUT);
@@ -125,7 +138,6 @@ extern "C" void app_main() {
   pServer = NimBLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
   NimBLEService *pService = pServer->createService(BLEUUID((uint16_t)0x180F));
-  fprintf(stderr,"------qert!!!!!!-------------\n");
 
   pStat = pService->createCharacteristic(BLEUUID((uint16_t)0x2B18),NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
   pDump = pService->createCharacteristic(BLEUUID((uint16_t)0X2AE2),NIMBLE_PROPERTY::WRITE);
@@ -143,8 +155,7 @@ extern "C" void app_main() {
   pAdvertising->setMinPreferred(0x12);
   pAdvertising->start();
 
-  int i2c_master_port = 0;
-  i2c_config_t conf;
+  TickType_t xLastWakeTime= xTaskGetTickCount();
   conf.mode = I2C_MODE_MASTER;
   conf.sda_io_num = GPIO_NUM_21;         // select GPIO specific to your project
   conf.sda_pullup_en = GPIO_PULLUP_DISABLE;
@@ -152,21 +163,12 @@ extern "C" void app_main() {
   conf.scl_pullup_en = GPIO_PULLUP_DISABLE;
   conf.master.clk_speed = 100000;  // select frequency specific to your project
   //conf.clk_flags = I2C_SCLK_SRC_FLAG_LIGHT_SLEEP;          /*!< Optional, you can use I2C_SCLK_SRC_FLAG_* flags to choose i2c source clock here. */
+
   i2c_param_config(i2c_master_port, &conf);
-
-  i2c_driver_install(i2c_master_port, conf.mode, 0, 0, 0);
-
-  ads1115_t ads = ads1115_config(i2c_master_port,0x48);
+  ads = ads1115_config(i2c_master_port,0x48);
   ads1115_set_pga(&ads,ADS1115_FSR_6_144);
   ads1115_set_mode(&ads,ADS1115_MODE_SINGLE);
-  ads1115_set_mux(&ads,   ADS1115_MUX_2_GND);
-
-  cs.volts=ads1115_get_mV(&ads);
-
-  TickType_t xLastWakeTime= xTaskGetTickCount();
   for( ;; ) {
-    i2c_param_config(i2c_master_port, &conf);
-    i2c_driver_install(i2c_master_port, conf.mode, 0, 0, 0);
     if (!devConn) {
       NoDrain();
       if (!NimBLEDevice::getAdvertising()->isAdvertising()) {
@@ -181,7 +183,7 @@ extern "C" void app_main() {
         fprintf(stderr,"stop ad\n");
         NimBLEDevice::stopAdvertising();
       }
-      readData(&ads);
+      readData();
       CheckDrain();
       pStat->setValue<CellStatus>(cs); // send status
       pStat->notify();

@@ -6,3 +6,5 @@ extern void BMSADCInit();
 extern uint32_t BMSReadVoltage(adc1_channel_t readPin,uint32_t cnt);
 extern int8_t BMSReadTemp(adc1_channel_t tPin,bool highside, uint32_t Vs
         ,int bCoef,uint32_t Ro,uint32_t R1,uint8_t cnt,uint16_t* vp=NULL,uint32_t* rtp=NULL,double* Tp=NULL);
+extern int8_t BMSComputeTemp(uint32_t Vout,bool highside, uint32_t Vs,int bCoef
+        ,uint32_t Ro,uint32_t R1,uint16_t* vp=NULL,uint32_t* rtp=NULL,double* Tp=NULL);
