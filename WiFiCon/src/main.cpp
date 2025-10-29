@@ -371,7 +371,6 @@ void batt(AsyncWebServerRequest *request){
 
   root["socLastAdj"] = st.lastAdjCoulomb;
   root["BatAHMeasured"] = st.BatAHMeasured > 0 ? String(st.BatAHMeasured) : String("N/A");
-
   root["nCells"] = dynSets.nCells;
 
   root["cellCnt"] = dynSets.cellSets.cnt;
@@ -674,6 +673,7 @@ void fillStatusDoc(JsonVariant root) {
   root["nCells"] = dynSets.nCells;
 
   JsonArray data = root.createNestedArray("cells");
+  uint16_t sumV = 0;
   for (uint8_t i = 0; i < dynSets.nCells; i++) {
     JsonObject cell = data.createNestedObject();
     cell["c"] = i;
@@ -682,7 +682,9 @@ void fillStatusDoc(JsonVariant root) {
     cell["bt"] = fromCel(st.cells[i].bdTemp);
     cell["d"] = st.cells[i].draining;
     cell["l"] = !st.cells[i].conn;
+    sumV += st.cells[i].volts;
   }
+  root["mVDiff"] = sumV - st.lastPackMilliVolts;
 }
 
 void status(AsyncWebServerRequest *request){

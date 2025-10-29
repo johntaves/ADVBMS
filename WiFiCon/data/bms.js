@@ -418,6 +418,8 @@ function queryBMS() {
             val = val + " under";
         $("#cellvolt .v").html(val);
 
+        $("#mVDiff").html(data.mVDiff);
+
         var packvolts = Number(data.packvolts)/1000;
         var dval = formatNum(packvolts,2);
         if (data.maxPackVState || data.minPackVState)
@@ -535,7 +537,7 @@ function queryBMS() {
                     $("#cellTV"+value.c+" .t").html(value.t);
                 else $("#cellTV"+value.c+" .t").html("");
                 $("#cellDel"+value.c+" .t").html(value.bt);
-                cell.text(formatNum(valV,2));
+                cell.text(formatNum(valV,3));
             } else cell.text('');
             var inp = $("#cellMove"+value.c);
             if (value.d) {

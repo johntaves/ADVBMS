@@ -157,7 +157,10 @@ int16_t ads1115_get_raw(ads1115_t* ads) {
   }
   else {
     // wait for 1 ms longer than the sampling rate, plus a little bit for rounding
-    vTaskDelay((((1000/sps[ads->config.bit.DR]) + 1) / portTICK_PERIOD_MS)+1);
+    uint32_t ct = esp_timer_get_time();
+    uint32_t delay = (1000000/sps[ads->config.bit.DR]) + 1000;
+    while ((esp_timer_get_time() - ct) < delay) ; 
+//    vTaskDelay((((1000/sps[ads->config.bit.DR]) + 1) / portTICK_PERIOD_MS)+1); I don't think we want the light sleep here
   }
 
   err = ads1115_read_register(ads, ADS1115_CONVERSION_REGISTER_ADDR, data, len);

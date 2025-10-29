@@ -168,6 +168,7 @@ extern "C" void app_main() {
   ads = ads1115_config(i2c_master_port,0x48);
   ads1115_set_pga(&ads,ADS1115_FSR_6_144);
   ads1115_set_mode(&ads,ADS1115_MODE_SINGLE);
+  ads1115_set_sps(&ads,ADS1115_SPS_860);
   for( ;; ) {
     if (!devConn) {
       NoDrain();
