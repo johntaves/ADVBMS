@@ -32,7 +32,6 @@ uint32_t startDrainMSecs=0,goalDrainMSecs=0;
 uint32_t acTime=0;
 i2c_config_t conf;
 int i2c_master_port = 0;
-ads1115_t ads;
 
 class MyServerCallbacks: public NimBLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
@@ -96,17 +95,23 @@ void readData() {
 
   uint32_t ct = millis();
   while ((millis() - ct) < cellSett.delay) ; // We don't want a vtaskdelay, because that will shut down things
-  
+  ads1115_t ads = ads1115_config(i2c_master_port,0x48);
+  ads1115_set_pga(&ads,ADS1115_FSR_6_144);
+  ads1115_set_mode(&ads,ADS1115_MODE_SINGLE);
+  ads1115_set_rdy_pin(&ads, GPIO_NUM_19);
+  ads1115_set_sps(&ads,ADS1115_SPS_860);
+
   ads1115_set_mux(&ads, ADS1115_MUX_2_GND);
   cs.volts=ads1115_get_mV(&ads);
 
   ads1115_set_mux(&ads, ADS1115_MUX_0_GND);
   mV=ads1115_get_mV(&ads);
-  cs.tempExt = BMSComputeTemp(mV,false,cs.volts,BCOEF,47000,51000);
+  cs.tempExt = BMSComputeTemp(mV,false,cs.volts ? cs.volts : 3300,BCOEF,47000,51000);
 
   ads1115_set_mux(&ads, ADS1115_MUX_1_GND);
   mV=ads1115_get_mV(&ads);
-  cs.tempBd = BMSComputeTemp(mV,false,cs.volts,BCOEF,47000,51000);
+  cs.tempBd = BMSComputeTemp(mV,false,cs.volts ? cs.volts : 3300,BCOEF,47000,51000);
+  
   if (!cellSett.resPwrOn) {
     gpio_set_level(TEMPPWR,LOW);
     gpio_set_level(BATTV,LOW);
@@ -118,7 +123,7 @@ void readData() {
 extern "C" void app_main() {
   fprintf(stderr,"alive\n");
   gpio_set_direction(GLED, GPIO_MODE_OUTPUT);
-        gpio_set_level(GLED,HIGH);
+  gpio_set_level(GLED,HIGH);
   gpio_set_direction(BATTV, GPIO_MODE_OUTPUT);
   gpio_set_direction(TEMPPWR, GPIO_MODE_OUTPUT);
   gpio_set_direction(DUMP, GPIO_MODE_OUTPUT);
@@ -165,10 +170,6 @@ extern "C" void app_main() {
   //conf.clk_flags = I2C_SCLK_SRC_FLAG_LIGHT_SLEEP;          /*!< Optional, you can use I2C_SCLK_SRC_FLAG_* flags to choose i2c source clock here. */
 
   i2c_param_config(i2c_master_port, &conf);
-  ads = ads1115_config(i2c_master_port,0x48);
-  ads1115_set_pga(&ads,ADS1115_FSR_6_144);
-  ads1115_set_mode(&ads,ADS1115_MODE_SINGLE);
-  ads1115_set_sps(&ads,ADS1115_SPS_860);
   for( ;; ) {
     if (!devConn) {
       NoDrain();

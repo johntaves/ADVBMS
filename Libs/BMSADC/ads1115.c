@@ -30,9 +30,10 @@ static esp_err_t ads1115_write_register(ads1115_t* ads, ads1115_register_address
   return ret;
 }
 
-static esp_err_t ads1115_read_register(ads1115_t* ads, ads1115_register_addresses_t reg, uint8_t* data, uint8_t len) {
+static esp_err_t ads1115_read_register(ads1115_t* ads, ads1115_register_addresses_t reg, uint16_t* resp) {
   i2c_cmd_handle_t cmd;
   esp_err_t ret;
+  uint8_t data[2];
 
   if(ads->last_reg != reg) { // if we're not on the correct register, change it
     cmd = i2c_cmd_link_create();
@@ -47,10 +48,11 @@ static esp_err_t ads1115_read_register(ads1115_t* ads, ads1115_register_addresse
   cmd = i2c_cmd_link_create();
   i2c_master_start(cmd); // generate start command
   i2c_master_write_byte(cmd,(ads->address<<1) | I2C_MASTER_READ,1); // specify address and read command
-  i2c_master_read(cmd, data, len, 0); // read all wanted data
+  i2c_master_read(cmd, data, 2, 0); // read all wanted data
   i2c_master_stop(cmd); // generate stop command
   ret = i2c_master_cmd_begin(ads->i2c_port, cmd, ads->max_ticks); // send the i2c command
   i2c_cmd_link_delete(cmd);
+  *resp = ((uint16_t)data[0] << 8) | (uint16_t)data[1];
   return ret;
 }
 
@@ -128,8 +130,7 @@ void ads1115_set_max_ticks(ads1115_t* ads, TickType_t max_ticks) {
 int16_t ads1115_get_raw(ads1115_t* ads) {
   const static char* TAG = "ads1115_get_raw";
   const static uint16_t sps[] = {8,16,32,64,128,250,475,860};
-  const static uint8_t len = 2;
-  uint8_t data[2];
+  uint16_t data;
   esp_err_t err;
   bool tmp; // temporary bool for reading from queue
 
@@ -146,6 +147,7 @@ int16_t ads1115_get_raw(ads1115_t* ads) {
         gpio_isr_handler_remove(ads->rdy_pin.pin);
         xQueueReset(ads->rdy_pin.gpio_evt_queue);
       }
+      fprintf(stderr,"failed to write\n");
       return 0;
     }
     ads->changed = 0; // say that the data is unchanged now
@@ -156,19 +158,25 @@ int16_t ads1115_get_raw(ads1115_t* ads) {
     gpio_isr_handler_remove(ads->rdy_pin.pin);
   }
   else {
-    // wait for 1 ms longer than the sampling rate, plus a little bit for rounding
-    uint32_t ct = esp_timer_get_time();
-    uint32_t delay = (1000000/sps[ads->config.bit.DR]) + 1000;
-    while ((esp_timer_get_time() - ct) < delay) ; 
+    uint32_t delay = (1000000/sps[ads->config.bit.DR]);
+    int cnt=0;
+    uint16_t reg = 0;
+    while (!(reg & 0x8000) && (cnt < 100)) {
+      uint32_t ct = esp_timer_get_time();
+      while ((esp_timer_get_time() - ct) < delay) ; 
+      err = ads1115_read_register(ads, ADS1115_CONFIG_REGISTER_ADDR, &reg);
+      cnt++;
+    }
 //    vTaskDelay((((1000/sps[ads->config.bit.DR]) + 1) / portTICK_PERIOD_MS)+1); I don't think we want the light sleep here
   }
 
-  err = ads1115_read_register(ads, ADS1115_CONVERSION_REGISTER_ADDR, data, len);
+  err = ads1115_read_register(ads, ADS1115_CONVERSION_REGISTER_ADDR, &data);
   if(err) {
     ESP_LOGE(TAG,"could not read from device: %s",esp_err_to_name(err));
+      fprintf(stderr,"failed to read\n");
     return 0;
   }
-  return ((uint16_t)data[0] << 8) | (uint16_t)data[1];
+  return (int16_t)data;
 }
 
 double ads1115_get_voltage(ads1115_t* ads) {
