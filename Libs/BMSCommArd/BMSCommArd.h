@@ -31,6 +31,7 @@ enum Msg {
   FirstSetting,SetCurSOC,SetBattAH,
   SetNCells,
   SetRelayOff,SetTopAmps,
+  SetDelay,SetCnt,SetResPwrOn,
   LastSetting,
 
   SetCellSetts,
@@ -130,9 +131,10 @@ struct StatSetts {
 };
 
 struct DynSetts {
-  uint8_t crc,cmd;
+  uint8_t crc,cmd,cnt,delay;
   uint16_t BattAH,TopAmps;
   uint8_t nCells;
+  bool resPwrOn;
   int64_t coulombOffset;
   CellSettings cellSets;
 };

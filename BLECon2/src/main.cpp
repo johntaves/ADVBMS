@@ -282,10 +282,10 @@ void checkStatus()
   statusCnt++;
   statusMS = millis();
   digitalWrite(RESISTOR_PWR,HIGH);
-  if (dynSets.cellSets.delay)
-    delay(dynSets.cellSets.delay);
-  st.curBoardTemp = BMSReadTemp(TEMP1,false,statSets.bdVolts,BCOEF,47000,47000,dynSets.cellSets.cnt);
-  if (!dynSets.cellSets.resPwrOn)
+  if (dynSets.delay)
+    delay(dynSets.delay);
+  st.curBoardTemp = BMSReadTemp(TEMP1,false,statSets.bdVolts,BCOEF,47000,47000,dynSets.cnt);
+  if (!dynSets.resPwrOn)
     digitalWrite(RESISTOR_PWR,LOW);
   if ((st.lastMilliAmps > 0 && chgOff) || (st.lastMilliAmps < 0 && loadsOff)) {
     if (!inAlertState) {
@@ -546,10 +546,10 @@ void initdynSets() {
   dynSets.nCells=0;
   dynSets.BattAH = 1;
   dynSets.coulombOffset = 0;
-  dynSets.cellSets.cnt = 4;
-  dynSets.cellSets.delay = 1;
+  dynSets.cnt = 4;
+  dynSets.delay = 1;
   dynSets.cellSets.drainV = 3400;
-  dynSets.cellSets.resPwrOn = false;
+  dynSets.resPwrOn = false;
   dynSets.cellSets.time = 1000; // this will be like 2 secs, because cell goes to sleep and slows CPU by 2x
   dynSets.TopAmps = 6;
 }
@@ -603,6 +603,15 @@ void DoSetting(uint8_t cmd,uint16_t val) {
       break;
     case SetTopAmps:
       dynSets.TopAmps = val;
+      break;
+    case SetDelay:
+      dynSets.delay = val;
+      break;
+    case SetCnt:
+      dynSets.cnt = val;
+      break;
+    case SetResPwrOn:
+      dynSets.resPwrOn = val;
       break;
     case SetBattAH:
       dynSets.BattAH = val;

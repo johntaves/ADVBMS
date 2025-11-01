@@ -14,7 +14,6 @@
 #include <CellData.h>
 #include "ads1115.h"
 
-#define BATTV GPIO_NUM_25
 #define DUMP GPIO_NUM_27
 #define TEMPPWR GPIO_NUM_26
 #define GLED GPIO_NUM_4
@@ -48,9 +47,6 @@ class MyServerCallbacks: public NimBLEServerCallbacks {
 class SettCallback: public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* pChar) {
     cellSett = pChar->getValue<CellSettings>();
-    if (!cellSett.cnt)
-      cellSett.cnt = 1;
-    //fprintf(stderr,"T: %d, C: %d, D: %d Leave On: %s drain V: %d\n",cellSett.time,cellSett.cnt,cellSett.delay,cellSett.resPwrOn?"Y":"N",cellSett.drainV);
   }
 };
 
@@ -87,14 +83,10 @@ class DumpCallback: public NimBLECharacteristicCallbacks {
 };
 
 void readData() {
-  gpio_set_level(GLED, HIGH);
-  gpio_set_level(BATTV, HIGH);
   gpio_set_level(TEMPPWR, HIGH);
   uint16_t mV;
   i2c_driver_install(i2c_master_port, conf.mode, 0, 0, 0);
 
-  uint32_t ct = millis();
-  while ((millis() - ct) < cellSett.delay) ; // We don't want a vtaskdelay, because that will shut down things
   ads1115_t ads = ads1115_config(i2c_master_port,0x48);
   ads1115_set_pga(&ads,ADS1115_FSR_6_144);
   ads1115_set_mode(&ads,ADS1115_MODE_SINGLE);
@@ -111,29 +103,22 @@ void readData() {
   ads1115_set_mux(&ads, ADS1115_MUX_1_GND);
   mV=ads1115_get_mV(&ads);
   cs.tempBd = BMSComputeTemp(mV,false,cs.volts ? cs.volts : 3300,BCOEF,47000,51000);
-  
-  if (!cellSett.resPwrOn) {
-    gpio_set_level(TEMPPWR,LOW);
-    gpio_set_level(BATTV,LOW);
-  }
+
+  gpio_set_level(TEMPPWR,LOW);
 //  fprintf(stderr,"V: %d, Tb: %d, Tx: %d, D: %d, Ms: %d\n",cs.volts,cs.tempBd,cs.tempExt,cs.draining, millis());
-  gpio_set_level(GLED,LOW);
 }
 
 extern "C" void app_main() {
   fprintf(stderr,"alive\n");
   gpio_set_direction(GLED, GPIO_MODE_OUTPUT);
   gpio_set_level(GLED,HIGH);
-  gpio_set_direction(BATTV, GPIO_MODE_OUTPUT);
   gpio_set_direction(TEMPPWR, GPIO_MODE_OUTPUT);
   gpio_set_direction(DUMP, GPIO_MODE_OUTPUT);
 
   cellSett.time = 2000;
-  cellSett.cnt = 4;
-  cellSett.delay = 10;
   cellSett.drainV = 3400;
   esp_pm_config_esp32_t pm_config = {
-      .max_freq_mhz = 80, // e.g. 80, 160, 240
+      .max_freq_mhz = 240, // e.g. 80, 160, 240
       .min_freq_mhz = 40, // e.g. 40
       .light_sleep_enable = true, // enable light sleep
   };
@@ -180,6 +165,7 @@ extern "C" void app_main() {
       gpio_set_level(GLED,ledOn ? LOW : HIGH);
       ledOn = !ledOn;
     } else {
+      gpio_set_level(GLED, HIGH);
       if (NimBLEDevice::getAdvertising()->isAdvertising()) {
         acTime = millis();
         fprintf(stderr,"stop ad\n");
@@ -189,6 +175,7 @@ extern "C" void app_main() {
       CheckDrain();
       pStat->setValue<CellStatus>(cs); // send status
       pStat->notify();
+      gpio_set_level(GLED, LOW);
     }
     vTaskDelayUntil( &xLastWakeTime, pdMS_TO_TICKS(cellSett.time) );
   }

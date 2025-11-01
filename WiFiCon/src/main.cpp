@@ -373,9 +373,9 @@ void batt(AsyncWebServerRequest *request){
   root["BatAHMeasured"] = st.BatAHMeasured > 0 ? String(st.BatAHMeasured) : String("N/A");
   root["nCells"] = dynSets.nCells;
 
-  root["cellCnt"] = dynSets.cellSets.cnt;
-  root["cellDelay"] = dynSets.cellSets.delay;
-  root["resPwrOn"] = dynSets.cellSets.resPwrOn;
+  root["cellCnt"] = dynSets.cnt;
+  root["cellDelay"] = dynSets.delay;
+  root["resPwrOn"] = dynSets.resPwrOn;
   root["drainV"] = dynSets.cellSets.drainV;
   root["cellTime"] = dynSets.cellSets.time;
 
@@ -922,9 +922,6 @@ void savewifi(AsyncWebServerRequest *request){
 void savecellset(AsyncWebServerRequest *request) {
   CellSetts msg;
   msg.cmd = SetCellSetts;
-  msg.cellSets.cnt = request->getParam("cellCnt", true)->value().toInt();
-  msg.cellSets.delay = request->getParam("cellDelay", true)->value().toInt();
-  msg.cellSets.resPwrOn = request->hasParam("resPwrOn", true) && request->getParam("resPwrOn", true)->value().equals("on");
   msg.cellSets.time = request->getParam("cellTime", true)->value().toInt();
   msg.cellSets.drainV = request->getParam("drainV", true)->value().toInt();
   dynSets.cellSets = msg.cellSets;
@@ -945,6 +942,17 @@ void saveItem(AsyncWebServerRequest *request,const char* n,uint8_t cmd,uint16_t 
 }
 
 void savecapacity(AsyncWebServerRequest *request) {
+  saveItem(request,"cellDelay",SetDelay,dynSets.delay);
+  saveItem(request,"cellCnt",SetCnt,dynSets.cnt);
+  bool rpo = request->hasParam("resPwrOn", true) && request->getParam("resPwrOn", true)->value().equals("on");
+  if (rpo != dynSets.resPwrOn)
+    {
+      SettingMsg msg;
+      msg.cmd = SetResPwrOn;
+      msg.val = rpo;
+      BMSSend(&msg);
+    }
+  dynSets.resPwrOn = rpo;
   saveItem(request,"CurSOC",SetCurSOC,101);
   saveItem(request,"BattAH",SetBattAH,dynSets.BattAH);
   saveItem(request,"TopAmps",SetTopAmps,dynSets.TopAmps);
@@ -1050,33 +1058,33 @@ void checkTemps()
 {
   tempMS = millis();
   digitalWrite(RESISTOR_PWR,HIGH);
-  if (dynSets.cellSets.delay)
-    delay(dynSets.cellSets.delay);
+  if (dynSets.delay)
+    delay(dynSets.delay);
 //  uint16_t vp;
 //  uint32_t rt;
 //  double T;
-  Temp1 = BMSReadTemp(TEMP1,false,statSets.bdVolts,dispSets.t1B,dispSets.t1R,47000,dynSets.cellSets.cnt);
+  Temp1 = BMSReadTemp(TEMP1,false,statSets.bdVolts,dispSets.t1B,dispSets.t1R,47000,dynSets.cnt);
 //  Serial.printf("1: %d %d %d %f, ",vp,Temp1,rt,T);
-  Temp2 = BMSReadTemp(TEMP2,false,statSets.bdVolts,dispSets.t2B,dispSets.t2R,47000,dynSets.cellSets.cnt);
+  Temp2 = BMSReadTemp(TEMP2,false,statSets.bdVolts,dispSets.t2B,dispSets.t2R,47000,dynSets.cnt);
   // 2678 is 0 inches
   // 3000 is known R
   // 150 is slope
   // 8inches is 100%
-  uint32_t v = BMSReadVoltage(WATER,dynSets.cellSets.cnt);
-//  Serial.printf("W: Cnt: %d %d %d\n",dynSets.cellSets.cnt,v,((v * 300000) / (statSets.bdVolts - v)));
+  uint32_t v = BMSReadVoltage(WATER,dynSets.cnt);
+//  Serial.printf("W: Cnt: %d %d %d\n",dynSets.cnt,v,((v * 300000) / (statSets.bdVolts - v)));
   if (v > 1210)
     Water = 200;
   else Water = 1000*(2678 - ((v * 3000) / (statSets.bdVolts - v))) / (1636*8);
 
   // min R 0, max R 90
   // 180 is known R, * 100 to get %
-  v = BMSReadVoltage(GAS,dynSets.cellSets.cnt);
+  v = BMSReadVoltage(GAS,dynSets.cnt);
 //  Serial.printf("G: %d %d %d\n",statSets.bdVolts,v,((v * 18000) / (statSets.bdVolts - v)));
   if (v > 1210)
     Gas = 200;
   else Gas = ((v * 18000) / (statSets.bdVolts - v)) / 120; // should be a 90ohm
 //  Serial.printf("2: %d %d\n",vp,Temp2);
-  if (!dynSets.cellSets.resPwrOn)
+  if (!dynSets.resPwrOn)
     digitalWrite(RESISTOR_PWR,LOW);
 
   struct tm t;

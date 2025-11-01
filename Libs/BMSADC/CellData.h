@@ -12,8 +12,6 @@ struct CellStatus {
  
 struct CellSettings {
     uint16_t time,drainV;
-    uint8_t cnt,delay;
-    bool resPwrOn;
 };
 
 #endif

@@ -216,13 +216,6 @@
                         <label for="nCells">Cells:</label>
                         <input type="number" name="nCells" id="nCells" value="" required="" maxlength="5" />
                     </div>
-
-                    <div class="buttonhold"><input type="submit" value="Save Settings"/></div>
-                </div>
-            </form>
-            <div id="cellDivRow"><div id="cellDel" style="display:none" class="stat">
-                    <div class="h"><span cell></span>&nbsp;<a move>&lt</a>&nbsp;<a forget>Disc</a></div>bT:&nbsp;<span class="t">Temp</span></div></div>
-            <form method="POST" action="savecellset" autocomplete="off">
             <div><label for="cellCnt"># Samples:</label>
                     <input name="cellCnt" type="number"/></div>
                     <div><label for="cellDelay">Pwr Delay:</label>
@@ -230,10 +223,17 @@
                     <div><label for="resPwrOn">Leave Pwr On:</label>
                         <input name="resPwrOn" type="checkbox"/></div>
                     <div>
-                    <label for="cellTime">Sample Time:</label>
-                    <input name="cellTime" type="number"/>
-                    <label for="drainV">Balance (mV):</label>
-                    <input name="drainV" type="number" min="0" max="5000" step="10"/>
+
+                    <div class="buttonhold"><input type="submit" value="Save Settings"/></div>
+                </div>
+            </form>
+            <div id="cellDivRow"><div id="cellDel" style="display:none" class="stat">
+                    <div class="h"><span cell></span>&nbsp;<a move>&lt</a>&nbsp;<a forget>Disc</a></div>bT:&nbsp;<span class="t">Temp</span></div></div>
+            <form method="POST" action="savecellset" autocomplete="off">
+                    <div><label for="cellTime">Sample Time:</label>
+                    <input name="cellTime" type="number"/></div>
+                    <div><label for="drainV">Balance (mV):</label>
+                    <input name="drainV" type="number" min="0" max="5000" step="10"/></div>
                 </div>
                 <div class="buttonhold"><input type="submit" value="Save settings" /></div>
             </form>
