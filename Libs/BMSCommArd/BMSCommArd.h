@@ -124,7 +124,7 @@ struct RelaySettings {
 struct StatSetts {
   uint8_t crc,cmd;
   bool useCellC,useBoardTemp;
-  uint16_t limits[2][2][2][2],unused,ChargeRate,bdVolts;
+  uint16_t limits[2][2][2][2],unused,RunUpDays,bdVolts;
   RelaySettings relays[C_RELAY_TOTAL];
   uint8_t ChargePct,ChargePctRec,CellsOutMin,CellsOutMax,CellsOutTime,MainID,PVID,InvID;
   uint32_t slideMS,ShuntErrTime;

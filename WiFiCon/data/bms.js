@@ -327,11 +327,13 @@ function getSettings(s) {
                 $("input[name='InvID']").val(data.InvID);
                 $("#ChargePct").val(data.ChargePct);
                 $("#ChargePctRec").val(data.ChargePctRec);
-                $("#ChargeRate").val(data.ChargeRate);
+                $("#RunUpDays").val(data.RunUpDays);
                 $("#CellsOutMin").val(data.CellsOutMin);
                 $("#CellsOutMax").val(data.CellsOutMax);
                 $("#CellsOutTime").val(data.CellsOutTime);
                 $("#bdVolts").val(data.bdVolts);
+                $("#daysTilRunUp").html(data.daysTilRunUp);
+
                 $.each(data.limitSettings, function (index, value) {
                     $("#" + index).val(value);
                 });

@@ -26,9 +26,12 @@ uint32_t statusMS=0,tempMS=0;
 HTTPClient http;
 atomic_flag taskRunning(0);
 Ticker watchDog,slider;
+struct tm curTime;
 
 time_t lastEventTime=0;
 int curEvent=0;
+uint16_t daysTilRunUp = 1;
+uint8_t curDay = 0;
 Event evts[MAX_EVENTS];
 
 BMSStatus st;
@@ -198,7 +201,7 @@ void limits(AsyncWebServerRequest *request){
   root["bdVolts"]=statSets.bdVolts;
   root["ChargePct"]=statSets.ChargePct;
   root["ChargePctRec"]=statSets.ChargePctRec;
-  root["ChargeRate"]=statSets.ChargeRate;
+  root["RunUpDays"]=statSets.RunUpDays;
   root["CellsOutMin"]=statSets.CellsOutMin;
   root["CellsOutMax"]=statSets.CellsOutMax;
   root["CellsOutTime"]=statSets.CellsOutTime;
@@ -206,6 +209,8 @@ void limits(AsyncWebServerRequest *request){
   root["MainID"] = statSets.MainID;
   root["PVID"] = statSets.PVID;
   root["InvID"] = statSets.InvID;
+  root["daysTilRunUp"] = daysTilRunUp;
+
   JsonObject obj = root.createNestedObject("limitSettings");
   for (int l0=0;l0<LimitConsts::Max0;l0++) {
     for (int l1=0;l1<LimitConsts::Max1;l1++) {
@@ -517,10 +522,13 @@ void allIn(AsyncWebServerRequest *request) {
   sendSuccess(request);
 }
 
-void fullChg(AsyncWebServerRequest *request) {
+void doFullChg() {
   AMsg msg;
   msg.cmd = FullChg;
   BMSSend(&msg);
+}
+void fullChg(AsyncWebServerRequest *request) {
+  doFullChg();
   sendSuccess(request);
 }
 
@@ -767,8 +775,12 @@ void savelimits(AsyncWebServerRequest *request) {
     statSets.bdVolts = request->getParam("bdVolts", true)->value().toInt();
   if (request->hasParam("ChargePctRec", true))
     statSets.ChargePctRec = request->getParam("ChargePctRec", true)->value().toInt();
-  if (request->hasParam("ChargeRate", true))
-    statSets.ChargeRate = request->getParam("ChargeRate", true)->value().toInt();
+  if (request->hasParam("RunUpDays", true))
+    statSets.RunUpDays = request->getParam("RunUpDays", true)->value().toInt();
+  if (statSets.RunUpDays < 1) statSets.RunUpDays = 1;
+  if (daysTilRunUp > statSets.RunUpDays)
+    daysTilRunUp = statSets.RunUpDays;
+
   if (request->hasParam("CellsOutMin", true))
     statSets.CellsOutMin = request->getParam("CellsOutMin", true)->value().toInt();
   if (request->hasParam("CellsOutMax", true))
@@ -1087,10 +1099,8 @@ void checkTemps()
   if (!dynSets.resPwrOn)
     digitalWrite(RESISTOR_PWR,LOW);
 
-  struct tm t;
-  getLocalTime(&t);
-  int curMin = (t.tm_hour * 60) + t.tm_min;
-  if (t.tm_year < 100)
+  int curMin = (curTime.tm_hour * 60) + curTime.tm_min;
+  if (curTime.tm_year < 100)
     return;
   for (int y=0;y<W_RELAY_TOTAL;y++) {
     RelaySettings *rp = &relSets.relays[y];
@@ -1114,12 +1124,12 @@ void checkTemps()
     TempSet* ts = &dispSets.tSets[i];
     if (ts->relay == 255) continue;
     if (ts->startMin < ts->endMin) {
-      if (!(ts->dows & 1 << t.tm_wday)) continue;
+      if (!(ts->dows & 1 << curTime.tm_wday)) continue;
       if (ts->startMin > curMin || ts->endMin < curMin) continue;
     } else {
       if (ts->startMin > curMin && ts->endMin < curMin) continue;
-      if (ts->startMin < curMin && !(ts->dows & 1 << t.tm_wday)) continue;
-      int dow = t.tm_wday - 1;
+      if (ts->startMin < curMin && !(ts->dows & 1 << curTime.tm_wday)) continue;
+      int dow = curTime.tm_wday - 1;
       if (dow < 0) dow = 6;
       if (ts->endMin > curMin && !(ts->dows & 1 << dow)) continue;
     }
@@ -1238,6 +1248,16 @@ void checkStatus()
       Serial.printf("Chg: %d to %d\n",n,previousRelayState[n]);
     }
   }
+  getLocalTime(&curTime);
+  if (curTime.tm_mday != curDay) {
+    curDay = curTime.tm_mday;
+    daysTilRunUp--;
+    if (!daysTilRunUp) {
+      doFullChg();
+      daysTilRunUp = statSets.RunUpDays;
+    }
+  }
+
   watchDog.once_ms(CHECKSTATUS+WATCHDOGSLOP,doWatchDog);
 }
 

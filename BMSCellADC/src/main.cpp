@@ -90,11 +90,14 @@ void readData() {
   ads1115_t ads = ads1115_config(i2c_master_port,0x48);
   ads1115_set_pga(&ads,ADS1115_FSR_6_144);
   ads1115_set_mode(&ads,ADS1115_MODE_SINGLE);
-  ads1115_set_rdy_pin(&ads, GPIO_NUM_19);
+  //ads1115_set_rdy_pin(&ads, GPIO_NUM_19);
   ads1115_set_sps(&ads,ADS1115_SPS_860);
 
   ads1115_set_mux(&ads, ADS1115_MUX_2_GND);
   cs.volts=ads1115_get_mV(&ads);
+
+  uint32_t curTime = millis();
+  while ((millis() - curTime) < 10) ; // let temp resistor get volts because of the capacitor and resistor delay
 
   ads1115_set_mux(&ads, ADS1115_MUX_0_GND);
   mV=ads1115_get_mV(&ads);

@@ -563,7 +563,7 @@ void initstatSets() {
   statSets.bdVolts = 3300;
   statSets.ChargePct = 100;
   statSets.ChargePctRec = 0;
-  statSets.ChargeRate = 0;
+  statSets.RunUpDays = 0;
   statSets.CellsOutMax = 80;
   statSets.CellsOutMin = 30;
   statSets.CellsOutTime = 12;
