@@ -34,6 +34,9 @@ uint16_t daysTilRunUp = 1;
 uint8_t curDay = 0;
 Event evts[MAX_EVENTS];
 
+uint32_t firstCellBalanceTime;
+uint16_t CellsDiff[MAX_CELLS];
+
 BMSStatus st;
 
 const int relayPins[W_RELAY_TOTAL] = { GPIO_NUM_2,GPIO_NUM_15,GPIO_NUM_13,GPIO_NUM_12,GPIO_NUM_14,GPIO_NUM_27 };
@@ -383,6 +386,12 @@ void batt(AsyncWebServerRequest *request){
   root["resPwrOn"] = dynSets.resPwrOn;
   root["drainV"] = dynSets.cellSets.drainV;
   root["cellTime"] = dynSets.cellSets.time;
+  JsonArray data = root.createNestedArray("cells");
+  for (uint8_t i = 0; i < dynSets.nCells; i++) {
+    JsonObject cell = data.createNestedObject();
+    cell["c"] = i;
+    cell["s"] = CellsDiff[i];
+  }
 
   serializeJson(doc, *response);
   request->send(response);
@@ -522,13 +531,21 @@ void allIn(AsyncWebServerRequest *request) {
   sendSuccess(request);
 }
 
-void doFullChg() {
-  AMsg msg;
+void ResetCellsDiff()
+{
+    for (int i=0;i<MAX_CELLS;i++) CellsDiff[i] = 0xffff;
+}
+
+void doFullChg(uint16_t val) {
+  SettingMsg msg;
   msg.cmd = FullChg;
+  msg.val = val;
+  if (val)
+    ResetCellsDiff();
   BMSSend(&msg);
 }
 void fullChg(AsyncWebServerRequest *request) {
-  doFullChg();
+  doFullChg(!st.doFullChg);
   sendSuccess(request);
 }
 
@@ -690,6 +707,7 @@ void fillStatusDoc(JsonVariant root) {
     cell["bt"] = fromCel(st.cells[i].bdTemp);
     cell["d"] = st.cells[i].draining;
     cell["l"] = !st.cells[i].conn;
+    cell["s"] = 
     sumV += st.cells[i].volts;
   }
   root["mVDiff"] = sumV - st.lastPackMilliVolts;
@@ -1253,11 +1271,25 @@ void checkStatus()
     curDay = curTime.tm_mday;
     daysTilRunUp--;
     if (!daysTilRunUp) {
-      doFullChg();
+      doFullChg(1);
       daysTilRunUp = statSets.RunUpDays;
     }
   }
-
+  if (st.doFullChg) {
+    int i=0;
+    for (i=0;i<dynSets.nCells && CellsDiff[i] == 0xffff;i++);
+    bool isFirst = !(i<dynSets.nCells);
+    
+    for (int i=0;i<dynSets.nCells;i++) {
+      if (CellsDiff[i] != 0xffff)
+        continue;
+      if (st.cells[i].volts < dynSets.cellSets.drainV)
+        continue;
+      if (isFirst)
+        firstCellBalanceTime = millis();
+      CellsDiff[i] = (uint16_t)(firstCellBalanceTime - millis())/1000;
+    }
+  }
   watchDog.once_ms(CHECKSTATUS+WATCHDOGSLOP,doWatchDog);
 }
 
@@ -1375,6 +1407,7 @@ void setup() {
   for (int i=0;i<MAX_EVENTS;i++)
     evts[i].when = 0;
   ArduinoOTA.begin();
+  ResetCellsDiff();
   digitalWrite(BLUE_LED,0);
 }
 

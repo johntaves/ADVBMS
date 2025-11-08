@@ -712,7 +712,7 @@ void ConSerData(const AMsg *mp)
     case MoveCell: DoMove((SettingMsg*)mp); break;
     case ForgetCell: DoForget((SettingMsg*)mp); break;
     case DumpCell: DoDump((DumpMsg*)mp); break;
-    case FullChg: st.doFullChg = !st.doFullChg; break;
+    case FullChg: st.doFullChg = ((SettingMsg*)mp)->val; break;
     case StatQuery: BMSSend(&statSets); break;
     case DynQuery: BMSSend(&dynSets); break;
     case StatSets: 

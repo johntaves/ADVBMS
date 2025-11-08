@@ -184,7 +184,7 @@ function initCells() {
     }
     myChart.update();
     $("[cellval]").remove();
-    $("[celldel]").remove();
+    $("[cellBatt]").remove();
     for (var rel=0;rel<nCells;rel++) {
         var temp = $("#cellTV").clone();
         temp.attr({id: "cellTV"+rel});
@@ -214,10 +214,10 @@ function initCells() {
          });
         temp.show();
 
-        temp = $("#cellDel").clone();
+        temp = $("#cellBatt").clone();
         temp.find("span[cell]").text('#'+rel).css("background-color", colors[rel]);
-        temp.attr({id: "cellDel"+rel});
-        temp.attr({celldel: true});
+        temp.attr({id: "cellBatt"+rel});
+        temp.attr({cellBatt: true});
         var theA = temp.find("a[forget]");
         theA.attr("cell",rel);
         theA.click(function () {
@@ -254,7 +254,7 @@ function initCells() {
                 }
             });
         });
-        temp.insertBefore("#cellDel");
+        temp.insertBefore("#cellBatt");
         temp.show();
     }
 }
@@ -320,6 +320,12 @@ function getSettings(s) {
                 $("input[name='resPwrOn']").prop("checked", data.resPwrOn);
                 $("input[name='drainV']").val(data.drainV);
                 $("input[name='cellTime']").val(data.cellTime);
+                $.each(data.cells, function (index, value) {
+                    $("#cellBat"+value.c+" .t").html(value.s);
+                    if (value.s == 65535)
+                        $("#cellBatt"+value.c+" .s").html("");
+                    else $("#cellBatt"+value.c+" .s").html(value.s);
+                });
             } else if (s == "limits") {
                 $("input[name='ShuntErrTime']").val(data.ShuntErrTime);
                 $("input[name='MainID']").val(data.MainID);
@@ -538,7 +544,7 @@ function queryBMS() {
                 if (value.t > -101)
                     $("#cellTV"+value.c+" .t").html(value.t);
                 else $("#cellTV"+value.c+" .t").html("");
-                $("#cellDel"+value.c+" .t").html(value.bt);
+                $("#cellBatt"+value.c+" .t").html(value.bt);
                 cell.text(formatNum(valV,3));
             } else cell.text('');
             var inp = $("#cellMove"+value.c);
