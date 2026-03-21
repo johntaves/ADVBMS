@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <ctime>
 #include "sdkconfig.h"
 #include "esp_err.h"
 #include "esp_pm.h"
@@ -9,8 +10,8 @@
 #include "driver/i2c.h"
 #include "driver/gpio.h"
 #include <NimBLEDevice.h>
-#include <BMSAll.h>
 #include <BMSADC.h>
+#include <BMSAll.h>
 #include <CellData.h>
 #include "ads1115.h"
 
@@ -31,23 +32,22 @@ CellStatus cs;
 uint32_t startDrainMSecs=0,goalDrainMSecs=0;
 uint32_t acTime=0;
 i2c_config_t conf;
-int i2c_master_port = 0;
 ads1115_t ads;
 
 class MyServerCallbacks: public NimBLEServerCallbacks {
-    void onConnect(BLEServer* pServer) {
+    void onConnect(BLEServer* pServer,NimBLEConnInfo& connInfo) {
       devConn = true;
       fprintf(stderr,"Connected\n");
     };
  
-    void onDisconnect(BLEServer* pServer) {
+    void onDisconnect(BLEServer* pServer,NimBLEConnInfo& connInfo, int reason) {
       devConn = false;
       fprintf(stderr,"Disconnected\n");
     }
 };
 
 class SettCallback: public NimBLECharacteristicCallbacks {
-  void onWrite(NimBLECharacteristic* pChar) {
+  void onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connInfo) {
     cellSett = pChar->getValue<CellSettings>();
     if (!cellSett.cnt)
       cellSett.cnt = 1;
@@ -77,7 +77,7 @@ void CheckDrain() {
 }
 
 class DumpCallback: public NimBLECharacteristicCallbacks {
-  void onWrite(NimBLECharacteristic* pChar) {
+  void onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connInfo) {
     NoDrain();
     goalDrainMSecs = 1000l * pChar->getValue<uint32_t>();
     if (goalDrainMSecs > 604800000)
@@ -92,7 +92,7 @@ void readData() {
   gpio_set_level(BATTV, HIGH);
   gpio_set_level(TEMPPWR, HIGH);
   uint16_t mV;
-  i2c_driver_install(i2c_master_port, conf.mode, 0, 0, 0);
+  i2c_driver_install(I2C_NUM_0, conf.mode, 0, 0, 0);
 
   uint32_t ct = millis();
   while ((millis() - ct) < cellSett.delay) ; // We don't want a vtaskdelay, because that will shut down things
@@ -127,7 +127,7 @@ extern "C" void app_main() {
   cellSett.cnt = 4;
   cellSett.delay = 10;
   cellSett.drainV = 3400;
-  esp_pm_config_esp32_t pm_config = {
+  esp_pm_config_t pm_config = {
       .max_freq_mhz = 80, // e.g. 80, 160, 240
       .min_freq_mhz = 40, // e.g. 40
       .light_sleep_enable = true, // enable light sleep
@@ -151,8 +151,8 @@ extern "C" void app_main() {
   pService->start();
   NimBLEAdvertising *pAdvertising = NimBLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(BLEUUID((uint16_t)0x180F));
-  pAdvertising->setScanResponse(true);
-  pAdvertising->setMinPreferred(0x12);
+  pAdvertising->setPreferredParams(12,4000);
+  pAdvertising->enableScanResponse(true);
   pAdvertising->start();
 
   TickType_t xLastWakeTime= xTaskGetTickCount();
@@ -164,8 +164,8 @@ extern "C" void app_main() {
   conf.master.clk_speed = 100000;  // select frequency specific to your project
   //conf.clk_flags = I2C_SCLK_SRC_FLAG_LIGHT_SLEEP;          /*!< Optional, you can use I2C_SCLK_SRC_FLAG_* flags to choose i2c source clock here. */
 
-  i2c_param_config(i2c_master_port, &conf);
-  ads = ads1115_config(i2c_master_port,0x48);
+  i2c_param_config(I2C_NUM_0, &conf);
+  ads = ads1115_config(I2C_NUM_0,0x48);
   ads1115_set_pga(&ads,ADS1115_FSR_6_144);
   ads1115_set_mode(&ads,ADS1115_MODE_SINGLE);
   for( ;; ) {

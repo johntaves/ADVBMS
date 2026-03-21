@@ -9,7 +9,7 @@ esp_adc_cal_characteristics_t adc_chars;
 void BMSADCInit() {
   adc1_config_width(ADC_WIDTH_BIT_12);
 
-  esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11
+  esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_12
       , ADC_WIDTH_BIT_12, ESP_ADC_CAL_VAL_DEFAULT_VREF, &adc_chars);
 }
 

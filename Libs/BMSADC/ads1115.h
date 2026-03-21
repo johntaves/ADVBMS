@@ -71,7 +71,7 @@ typedef union { // configuration register
 typedef struct {
   bool in_use; // gpio is used
   gpio_num_t pin; // ready pin
-  xQueueHandle gpio_evt_queue; // pin triggered queue
+  QueueHandle_t gpio_evt_queue; // pin triggered queue
 } ads1115_rdy_pin_t;
 
 typedef struct {

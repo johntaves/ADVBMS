@@ -246,8 +246,8 @@ void CheckBLEScan() {
   }
 }
 
-class adCB: public NimBLEAdvertisedDeviceCallbacks {
-    void onResult(NimBLEAdvertisedDevice* ad) {
+class adCB: public NimBLEScanCallbacks {
+    void onResult(const NimBLEAdvertisedDevice* ad) {
       if (!ad->getName().compare("LiFePo4 Cell")
               && ad->haveServiceUUID()
               && ad->isAdvertisingService(NimBLEUUID((uint16_t)0x180F))) {
@@ -817,7 +817,7 @@ void setup() {
   for (int i=0;i<MAX_CELLS;i++) cells[i].pClient = NULL;
 
   BMSADCInit();
-  adc1_config_channel_atten(TEMP1, ADC_ATTEN_DB_11);
+  adc1_config_channel_atten(TEMP1, ADC_ATTEN_DB_12);
   pinMode(GREEN_LED, OUTPUT);
   pinMode(RESISTOR_PWR, OUTPUT);
   pinMode(INV, INPUT);
@@ -835,10 +835,10 @@ void setup() {
   SetAmpinvtVals();
 
   NimBLEDevice::init("");
-  emptyAddress = NimBLEAddress("00:00:00:00:00:00");
+  emptyAddress = NimBLEAddress("00:00:00:00:00:00", BLE_ADDR_PUBLIC);
 Serial.printf("EA: %s\n",emptyAddress.toString().c_str());
   pBLEScan = NimBLEDevice::getScan();
-  pBLEScan->setAdvertisedDeviceCallbacks(new adCB(), false);
+  pBLEScan->setScanCallbacks(new adCB(), false);
   pBLEScan->setMaxResults(0); // do not store the scan results, use callback only.
 
   Serial.printf("ncells %d\n",cellBLE.numCells);

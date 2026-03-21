@@ -7,7 +7,7 @@
 
 static void IRAM_ATTR gpio_isr_handler(void* arg) {
   const bool ret = 1; // dummy value to pass to queue
-  xQueueHandle gpio_evt_queue = (xQueueHandle) arg; // find which queue to write
+  QueueHandle_t gpio_evt_queue = (QueueHandle_t) arg; // find which queue to write
   xQueueSendFromISR(gpio_evt_queue, &ret, NULL);
 }
 
@@ -85,7 +85,7 @@ void ads1115_set_rdy_pin(ads1115_t* ads, gpio_num_t gpio) {
   gpio_config_t io_conf;
   esp_err_t err;
 
-  io_conf.intr_type = GPIO_PIN_INTR_NEGEDGE; // positive to negative (pulled down)
+  io_conf.intr_type = GPIO_INTR_NEGEDGE; // positive to negative (pulled down)
   io_conf.pin_bit_mask = 1<<gpio;
   io_conf.mode = GPIO_MODE_INPUT;
   io_conf.pull_up_en = 1;

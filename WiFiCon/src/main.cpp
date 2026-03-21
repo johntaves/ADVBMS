@@ -930,10 +930,10 @@ void savecellset(AsyncWebServerRequest *request) {
   sendSuccess(request);
 }
 
-void saveItem(AsyncWebServerRequest *request,const char* n,uint8_t cmd,uint16_t val) {
+void saveItem(const AsyncWebServerRequest *request,const char* n,uint8_t cmd,uint16_t val) {
   SettingMsg msg;
   if (!request->hasParam(n, true)) return;
-  AsyncWebParameter *p1 = request->getParam(n, true);
+  const AsyncWebParameter *p1 = request->getParam(n, true);
   if (p1->value().length() == 0)
     return;
   msg.cmd = cmd;
@@ -1273,10 +1273,10 @@ void setup() {
   pinMode(RESISTOR_PWR, OUTPUT);
   pinMode(BLUE_LED, OUTPUT);
   digitalWrite(BLUE_LED,1);
-  adc1_config_channel_atten(TEMP1, ADC_ATTEN_DB_11);
-  adc1_config_channel_atten(TEMP2, ADC_ATTEN_DB_11);
-  adc1_config_channel_atten(WATER, ADC_ATTEN_DB_11);
-  adc1_config_channel_atten(GAS, ADC_ATTEN_DB_11);
+  adc1_config_channel_atten(TEMP1, ADC_ATTEN_DB_12);
+  adc1_config_channel_atten(TEMP2, ADC_ATTEN_DB_12);
+  adc1_config_channel_atten(WATER, ADC_ATTEN_DB_12);
+  adc1_config_channel_atten(GAS, ADC_ATTEN_DB_12);
   BMSInitCom(&WonSerData);
   Wire.begin();
   if(!SPIFFS.begin()){
@@ -1290,8 +1290,10 @@ void setup() {
     wifiSets.password[0] = 0;
     wifiSets.apName[0] = 0;
     wifiSets.apPW[0] = 0;
+    strcpy(wifiSets.ssid,"mekJ122");
+    strcpy(wifiSets.password,"aloha459");
   }
-  WiFi.onEvent(onconnect, WiFiEvent_t::SYSTEM_EVENT_STA_GOT_IP);
+  WiFi.onEvent(onconnect, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_GOT_IP);
   WiFiInit();
   BMSInitStatus(&st);
   if (!readEE("comm",(uint8_t*)&commSets,sizeof(commSets))) {
@@ -1336,10 +1338,9 @@ void setup() {
   configTzTime("PST8PDT,M3.2.0,M11.1.0","pool.ntp.org");
   AMsg msg;
   msg.cmd = StatQuery;
-  Serial.println("waiting for static settings");
   while (BMSWaitFor(&msg,StatSets))
     Serial.println("Again");
-  Serial.println("Gottem");
+  Serial.println("Got static");
   msg.cmd = DynQuery;
   BMSWaitFor(&msg,DynSets);
   for (int i=0;i<MAX_EVENTS;i++)
