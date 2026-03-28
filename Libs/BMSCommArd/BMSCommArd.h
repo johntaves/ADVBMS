@@ -31,6 +31,7 @@ enum Msg {
   FirstSetting,SetCurSOC,SetBattAH,
   SetNCells,
   SetRelayOff,SetTopAmps,
+  SetDelay,SetCnt,SetResPwrOn,
   LastSetting,
 
   SetCellSetts,
@@ -123,16 +124,17 @@ struct RelaySettings {
 struct StatSetts {
   uint8_t crc,cmd;
   bool useCellC,useBoardTemp;
-  uint16_t limits[2][2][2][2],unused,ChargeRate,bdVolts;
+  uint16_t limits[2][2][2][2],unused,RunUpDays,bdVolts;
   RelaySettings relays[C_RELAY_TOTAL];
   uint8_t ChargePct,ChargePctRec,CellsOutMin,CellsOutMax,CellsOutTime,MainID,PVID,InvID;
   uint32_t slideMS,ShuntErrTime;
 };
 
 struct DynSetts {
-  uint8_t crc,cmd;
+  uint8_t crc,cmd,cnt,delay;
   uint16_t BattAH,TopAmps;
   uint8_t nCells;
+  bool resPwrOn;
   int64_t coulombOffset;
   CellSettings cellSets;
 };

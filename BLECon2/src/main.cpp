@@ -6,7 +6,6 @@
 #include <Ticker.h>
 #include <BMSADC.h>
 #include <BMSCommArd.h>
-#include <CellData.h>
 #include <CAN.h>
 #include "defines.h"
 
@@ -248,6 +247,7 @@ void CheckBLEScan() {
 
 class adCB: public NimBLEScanCallbacks {
     void onResult(const NimBLEAdvertisedDevice* ad) {
+      Serial.printf("Got one '%s'\n",ad->getName().c_str());
       if (!ad->getName().compare("LiFePo4 Cell")
               && ad->haveServiceUUID()
               && ad->isAdvertisingService(NimBLEUUID((uint16_t)0x180F))) {
@@ -282,10 +282,10 @@ void checkStatus()
   statusCnt++;
   statusMS = millis();
   digitalWrite(RESISTOR_PWR,HIGH);
-  if (dynSets.cellSets.delay)
-    delay(dynSets.cellSets.delay);
-  st.curBoardTemp = BMSReadTemp(TEMP1,false,statSets.bdVolts,BCOEF,47000,47000,dynSets.cellSets.cnt);
-  if (!dynSets.cellSets.resPwrOn)
+  if (dynSets.delay)
+    delay(dynSets.delay);
+  st.curBoardTemp = BMSReadTemp(TEMP1,false,statSets.bdVolts,BCOEF,47000,47000,dynSets.cnt);
+  if (!dynSets.resPwrOn)
     digitalWrite(RESISTOR_PWR,LOW);
   if ((st.lastMilliAmps > 0 && chgOff) || (st.lastMilliAmps < 0 && loadsOff)) {
     if (!inAlertState) {
@@ -546,10 +546,10 @@ void initdynSets() {
   dynSets.nCells=0;
   dynSets.BattAH = 1;
   dynSets.coulombOffset = 0;
-  dynSets.cellSets.cnt = 4;
-  dynSets.cellSets.delay = 1;
+  dynSets.cnt = 4;
+  dynSets.delay = 1;
   dynSets.cellSets.drainV = 3400;
-  dynSets.cellSets.resPwrOn = false;
+  dynSets.resPwrOn = false;
   dynSets.cellSets.time = 1000; // this will be like 2 secs, because cell goes to sleep and slows CPU by 2x
   dynSets.TopAmps = 6;
 }
@@ -563,7 +563,7 @@ void initstatSets() {
   statSets.bdVolts = 3300;
   statSets.ChargePct = 100;
   statSets.ChargePctRec = 0;
-  statSets.ChargeRate = 0;
+  statSets.RunUpDays = 0;
   statSets.CellsOutMax = 80;
   statSets.CellsOutMin = 30;
   statSets.CellsOutTime = 12;
@@ -603,6 +603,15 @@ void DoSetting(uint8_t cmd,uint16_t val) {
       break;
     case SetTopAmps:
       dynSets.TopAmps = val;
+      break;
+    case SetDelay:
+      dynSets.delay = val;
+      break;
+    case SetCnt:
+      dynSets.cnt = val;
+      break;
+    case SetResPwrOn:
+      dynSets.resPwrOn = val;
       break;
     case SetBattAH:
       dynSets.BattAH = val;
@@ -703,7 +712,7 @@ void ConSerData(const AMsg *mp)
     case MoveCell: DoMove((SettingMsg*)mp); break;
     case ForgetCell: DoForget((SettingMsg*)mp); break;
     case DumpCell: DoDump((DumpMsg*)mp); break;
-    case FullChg: st.doFullChg = !st.doFullChg; break;
+    case FullChg: st.doFullChg = ((SettingMsg*)mp)->val; break;
     case StatQuery: BMSSend(&statSets); break;
     case DynQuery: BMSSend(&dynSets); break;
     case StatSets: 
@@ -836,7 +845,6 @@ void setup() {
 
   NimBLEDevice::init("");
   emptyAddress = NimBLEAddress("00:00:00:00:00:00", BLE_ADDR_PUBLIC);
-Serial.printf("EA: %s\n",emptyAddress.toString().c_str());
   pBLEScan = NimBLEDevice::getScan();
   pBLEScan->setScanCallbacks(new adCB(), false);
   pBLEScan->setMaxResults(0); // do not store the scan results, use callback only.

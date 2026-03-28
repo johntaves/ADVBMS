@@ -1,9 +1,10 @@
 
-#include "ads1115.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "esp_log.h"
+#include "esp_timer.h"
+#include "ads1115.h"
 
 static void IRAM_ATTR gpio_isr_handler(void* arg) {
   const bool ret = 1; // dummy value to pass to queue
@@ -12,49 +13,32 @@ static void IRAM_ATTR gpio_isr_handler(void* arg) {
 }
 
 static esp_err_t ads1115_write_register(ads1115_t* ads, ads1115_register_addresses_t reg, uint16_t data) {
-  i2c_cmd_handle_t cmd;
   esp_err_t ret;
-  uint8_t out[2];
+  uint8_t out[3];
 
-  out[0] = data >> 8; // get 8 greater bits
-  out[1] = data & 0xFF; // get 8 lower bits
-  cmd = i2c_cmd_link_create();
-  i2c_master_start(cmd); // generate a start command
-  i2c_master_write_byte(cmd,(ads->address<<1) | I2C_MASTER_WRITE,1); // specify address and write command
-  i2c_master_write_byte(cmd,reg,1); // specify register
-  i2c_master_write(cmd,out,2,1); // write it
-  i2c_master_stop(cmd); // generate a stop command
-  ret = i2c_master_cmd_begin(ads->i2c_port, cmd, ads->max_ticks); // send the i2c command
-  i2c_cmd_link_delete(cmd);
+  out[0] = reg;
+  out[1] = data >> 8; // get 8 greater bits
+  out[2] = data & 0xFF; // get 8 lower bits
+  ret = i2c_master_transmit(ads->dev_handle,out,3,-1); // write it
   ads->last_reg = reg; // change the internally saved register
   return ret;
 }
 
-static esp_err_t ads1115_read_register(ads1115_t* ads, ads1115_register_addresses_t reg, uint8_t* data, uint8_t len) {
-  i2c_cmd_handle_t cmd;
+static esp_err_t ads1115_read_register(ads1115_t* ads, ads1115_register_addresses_t reg, uint16_t* resp) {
   esp_err_t ret;
+  uint8_t data[2];
 
   if(ads->last_reg != reg) { // if we're not on the correct register, change it
-    cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd,(ads->address<<1) | I2C_MASTER_WRITE,1);
-    i2c_master_write_byte(cmd,reg,1);
-    i2c_master_stop(cmd);
-    i2c_master_cmd_begin(ads->i2c_port, cmd, ads->max_ticks);
-    i2c_cmd_link_delete(cmd);
+    data[0] = reg;
+    ret = i2c_master_transmit(ads->dev_handle,data,1,-1);
     ads->last_reg = reg;
   }
-  cmd = i2c_cmd_link_create();
-  i2c_master_start(cmd); // generate start command
-  i2c_master_write_byte(cmd,(ads->address<<1) | I2C_MASTER_READ,1); // specify address and read command
-  i2c_master_read(cmd, data, len, 0); // read all wanted data
-  i2c_master_stop(cmd); // generate stop command
-  ret = i2c_master_cmd_begin(ads->i2c_port, cmd, ads->max_ticks); // send the i2c command
-  i2c_cmd_link_delete(cmd);
+  ret = i2c_master_receive(ads->dev_handle, data, 2, -1); // read all wanted data
+  *resp = ((uint16_t)data[0] << 8) | (uint16_t)data[1];
   return ret;
 }
 
-ads1115_t ads1115_config(i2c_port_t i2c_port, uint8_t address) {
+ads1115_t ads1115_config(i2c_master_dev_handle_t dev_handle) {
   ads1115_t ads; // setup configuration with default values
   ads.config.bit.OS = 1; // always start conversion
   ads.config.bit.MUX = ADS1115_MUX_0_GND;
@@ -66,8 +50,7 @@ ads1115_t ads1115_config(i2c_port_t i2c_port, uint8_t address) {
   ads.config.bit.COMP_LAT = 0;
   ads.config.bit.COMP_QUE = 0b11;
 
-  ads.i2c_port = i2c_port; // save i2c port
-  ads.address = address; // save i2c address
+  ads.dev_handle = dev_handle; // save i2c address
   ads.rdy_pin.in_use = 0; // state that rdy_pin not used
   ads.last_reg = ADS1115_MAX_REGISTER_ADDR; // say that we accessed invalid register last
   ads.changed = 1; // say we changed the configuration
@@ -128,11 +111,9 @@ void ads1115_set_max_ticks(ads1115_t* ads, TickType_t max_ticks) {
 int16_t ads1115_get_raw(ads1115_t* ads) {
   const static char* TAG = "ads1115_get_raw";
   const static uint16_t sps[] = {8,16,32,64,128,250,475,860};
-  const static uint8_t len = 2;
-  uint8_t data[2];
+  uint16_t data;
   esp_err_t err;
   bool tmp; // temporary bool for reading from queue
-
   if(ads->rdy_pin.in_use) {
     gpio_isr_handler_add(ads->rdy_pin.pin, gpio_isr_handler, (void*)ads->rdy_pin.gpio_evt_queue);
     xQueueReset(ads->rdy_pin.gpio_evt_queue);
@@ -146,6 +127,7 @@ int16_t ads1115_get_raw(ads1115_t* ads) {
         gpio_isr_handler_remove(ads->rdy_pin.pin);
         xQueueReset(ads->rdy_pin.gpio_evt_queue);
       }
+      fprintf(stderr,"failed to write\n");
       return 0;
     }
     ads->changed = 0; // say that the data is unchanged now
@@ -156,16 +138,25 @@ int16_t ads1115_get_raw(ads1115_t* ads) {
     gpio_isr_handler_remove(ads->rdy_pin.pin);
   }
   else {
-    // wait for 1 ms longer than the sampling rate, plus a little bit for rounding
-    vTaskDelay((((1000/sps[ads->config.bit.DR]) + 1) / portTICK_PERIOD_MS)+1);
+    uint32_t delay = (1000000/sps[ads->config.bit.DR]);
+    int cnt=0;
+    uint16_t reg = 0;
+    while (!(reg & 0x8000) && (cnt < 100)) {
+      uint32_t ct = esp_timer_get_time();
+      while ((esp_timer_get_time() - ct) < delay) ; 
+      err = ads1115_read_register(ads, ADS1115_CONFIG_REGISTER_ADDR, &reg);
+      cnt++;
+    }
+//    vTaskDelay((((1000/sps[ads->config.bit.DR]) + 1) / portTICK_PERIOD_MS)+1); I don't think we want the light sleep here
   }
 
-  err = ads1115_read_register(ads, ADS1115_CONVERSION_REGISTER_ADDR, data, len);
+  err = ads1115_read_register(ads, ADS1115_CONVERSION_REGISTER_ADDR, &data);
   if(err) {
     ESP_LOGE(TAG,"could not read from device: %s",esp_err_to_name(err));
+      fprintf(stderr,"failed to read\n");
     return 0;
   }
-  return ((uint16_t)data[0] << 8) | (uint16_t)data[1];
+  return (int16_t)data;
 }
 
 double ads1115_get_voltage(ads1115_t* ads) {

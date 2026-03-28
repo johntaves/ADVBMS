@@ -7,15 +7,13 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
-#include "driver/i2c.h"
+#include "driver/i2c_master.h"
 #include "driver/gpio.h"
 #include <NimBLEDevice.h>
-#include <BMSADC.h>
-#include <BMSAll.h>
-#include <CellData.h>
+#include "BMSAll.h"
+#include "CellData.h"
 #include "ads1115.h"
 
-#define BATTV GPIO_NUM_25
 #define DUMP GPIO_NUM_27
 #define TEMPPWR GPIO_NUM_26
 #define GLED GPIO_NUM_4
@@ -31,10 +29,9 @@ CellSettings cellSett;
 CellStatus cs;
 uint32_t startDrainMSecs=0,goalDrainMSecs=0;
 uint32_t acTime=0;
-i2c_config_t conf;
-ads1115_t ads;
+i2c_master_bus_handle_t bus_handle;
 
-class MyServerCallbacks: public NimBLEServerCallbacks {
+class ServerCallbacks: public NimBLEServerCallbacks {
     void onConnect(BLEServer* pServer,NimBLEConnInfo& connInfo) {
       devConn = true;
       fprintf(stderr,"Connected\n");
@@ -44,16 +41,13 @@ class MyServerCallbacks: public NimBLEServerCallbacks {
       devConn = false;
       fprintf(stderr,"Disconnected\n");
     }
-};
+} serverCallbacks;
 
 class SettCallback: public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connInfo) {
     cellSett = pChar->getValue<CellSettings>();
-    if (!cellSett.cnt)
-      cellSett.cnt = 1;
-    //fprintf(stderr,"T: %d, C: %d, D: %d Leave On: %s drain V: %d\n",cellSett.time,cellSett.cnt,cellSett.delay,cellSett.resPwrOn?"Y":"N",cellSett.drainV);
   }
-};
+} settCallback;
 
 void NoDrain() {
   gpio_set_level(DUMP,LOW);
@@ -85,92 +79,106 @@ class DumpCallback: public NimBLECharacteristicCallbacks {
     startDrainMSecs = millis();
     CheckDrain();
   }
-};
+} dumpCallback;
 
-void readData() {
-  gpio_set_level(GLED, HIGH);
-  gpio_set_level(BATTV, HIGH);
+void readData(i2c_master_dev_handle_t dev_handle) {
   gpio_set_level(TEMPPWR, HIGH);
-  uint16_t mV;
-  i2c_driver_install(I2C_NUM_0, conf.mode, 0, 0, 0);
+  uint16_t mV0,mV1;
+  ads1115_t ads = ads1115_config(dev_handle);
+  ads1115_set_pga(&ads,ADS1115_FSR_6_144);
+  ads1115_set_mode(&ads,ADS1115_MODE_SINGLE);
+  //ads1115_set_rdy_pin(&ads, GPIO_NUM_19);
+  ads1115_set_sps(&ads,ADS1115_SPS_860);
 
-  uint32_t ct = millis();
-  while ((millis() - ct) < cellSett.delay) ; // We don't want a vtaskdelay, because that will shut down things
-  
   ads1115_set_mux(&ads, ADS1115_MUX_2_GND);
   cs.volts=ads1115_get_mV(&ads);
 
+  uint32_t curTime = millis();
+  while ((millis() - curTime) < 10) ; // let temp resistor get volts because of the capacitor and resistor delay
+
   ads1115_set_mux(&ads, ADS1115_MUX_0_GND);
-  mV=ads1115_get_mV(&ads);
-  cs.tempExt = BMSComputeTemp(mV,false,cs.volts,BCOEF,47000,51000);
+  mV0=ads1115_get_mV(&ads);
+
+  cs.tempExt = BMSComputeTemp(mV0,false,cs.volts ? cs.volts : 3300,BCOEF,47000,51000);
 
   ads1115_set_mux(&ads, ADS1115_MUX_1_GND);
-  mV=ads1115_get_mV(&ads);
-  cs.tempBd = BMSComputeTemp(mV,false,cs.volts,BCOEF,47000,51000);
-  if (!cellSett.resPwrOn) {
-    gpio_set_level(TEMPPWR,LOW);
-    gpio_set_level(BATTV,LOW);
-  }
-//  fprintf(stderr,"V: %d, Tb: %d, Tx: %d, D: %d, Ms: %d\n",cs.volts,cs.tempBd,cs.tempExt,cs.draining, millis());
-  gpio_set_level(GLED,LOW);
+  mV1=ads1115_get_mV(&ads);
+  cs.tempBd = BMSComputeTemp(mV1,false,cs.volts ? cs.volts : 3300,BCOEF,47000,51000);
+  gpio_set_level(TEMPPWR,LOW);
+  fprintf(stderr,"V: %d, Tb: %d, Tx: %d, D: %d, Ms: %lu\n",cs.volts,cs.tempBd,cs.tempExt,cs.draining, millis());
 }
 
 extern "C" void app_main() {
-  fprintf(stderr,"alive\n");
   gpio_set_direction(GLED, GPIO_MODE_OUTPUT);
-        gpio_set_level(GLED,HIGH);
-  gpio_set_direction(BATTV, GPIO_MODE_OUTPUT);
   gpio_set_direction(TEMPPWR, GPIO_MODE_OUTPUT);
   gpio_set_direction(DUMP, GPIO_MODE_OUTPUT);
+  gpio_set_level(GLED,HIGH);
+  vTaskDelay(100);
+  gpio_set_level(GLED,LOW);
+  fprintf(stderr,"alive\n");
 
   cellSett.time = 2000;
-  cellSett.cnt = 4;
-  cellSett.delay = 10;
   cellSett.drainV = 3400;
   esp_pm_config_t pm_config = {
-      .max_freq_mhz = 80, // e.g. 80, 160, 240
+      .max_freq_mhz = 240, // e.g. 80, 160, 240
       .min_freq_mhz = 40, // e.g. 40
       .light_sleep_enable = true, // enable light sleep
   };
   ESP_ERROR_CHECK( esp_pm_configure(&pm_config) );
+  fprintf(stderr,"start nimble\n");
   NimBLEDevice::init("LiFePo4 Cell");
   fprintf(stderr,"MAC: %s\n",NimBLEDevice::toString().c_str());
   pServer = NimBLEDevice::createServer();
-  pServer->setCallbacks(new MyServerCallbacks());
+  pServer->setCallbacks(&serverCallbacks);
   NimBLEService *pService = pServer->createService(BLEUUID((uint16_t)0x180F));
 
   pStat = pService->createCharacteristic(BLEUUID((uint16_t)0x2B18),NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
   pDump = pService->createCharacteristic(BLEUUID((uint16_t)0X2AE2),NIMBLE_PROPERTY::WRITE);
-  pDump->setCallbacks(new DumpCallback());
+  pDump->setCallbacks(&dumpCallback);
 
   pSett = pService->createCharacteristic(BLEUUID((uint16_t)0x2B15),NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE);
-  pSett->setCallbacks(new SettCallback());
+  pSett->setCallbacks(&settCallback);
   pSett->setValue<CellSettings>(cellSett);
 
   
   pService->start();
   NimBLEAdvertising *pAdvertising = NimBLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(BLEUUID((uint16_t)0x180F));
+  pAdvertising->setName("LiFePo4 Cell");
   pAdvertising->setPreferredParams(12,4000);
   pAdvertising->enableScanResponse(true);
   pAdvertising->start();
 
   TickType_t xLastWakeTime= xTaskGetTickCount();
-  conf.mode = I2C_MODE_MASTER;
-  conf.sda_io_num = GPIO_NUM_21;         // select GPIO specific to your project
-  conf.sda_pullup_en = GPIO_PULLUP_DISABLE;
-  conf.scl_io_num = GPIO_NUM_22;         // select GPIO specific to your project
-  conf.scl_pullup_en = GPIO_PULLUP_DISABLE;
-  conf.master.clk_speed = 100000;  // select frequency specific to your project
-  //conf.clk_flags = I2C_SCLK_SRC_FLAG_LIGHT_SLEEP;          /*!< Optional, you can use I2C_SCLK_SRC_FLAG_* flags to choose i2c source clock here. */
+  i2c_master_bus_config_t conf = {
+    .i2c_port = I2C_NUM_0,
+    .sda_io_num = GPIO_NUM_21,         // select GPIO specific to your project
+    .scl_io_num = GPIO_NUM_22,         // select GPIO specific to your project
+    .clk_source = I2C_CLK_SRC_APB ,
+    .glitch_ignore_cnt = 7,
+    .intr_priority = 0,
+    .trans_queue_depth = 0, 
+    .flags = {
+      .enable_internal_pullup = false,
+      .allow_pd = false
+    }
+  };
 
-  i2c_param_config(I2C_NUM_0, &conf);
-  ads = ads1115_config(I2C_NUM_0,0x48);
-  ads1115_set_pga(&ads,ADS1115_FSR_6_144);
-  ads1115_set_mode(&ads,ADS1115_MODE_SINGLE);
+  ESP_ERROR_CHECK(i2c_new_master_bus(&conf,&bus_handle));
+  i2c_device_config_t dev_cfg = {
+    .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+    .device_address = 0x48,
+    .scl_speed_hz = 100000,
+    .scl_wait_us = 0,
+    .flags = { .disable_ack_check = false }
+  };
+  i2c_master_dev_handle_t dev_handle;
+  ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle));
+  //conf.clk_flags = I2C_SCLK_SRC_FLAG_LIGHT_SLEEP;          /*!< Optional, you can use I2C_SCLK_SRC_FLAG_* flags to choose i2c source clock here. */
   for( ;; ) {
     if (!devConn) {
       NoDrain();
+        fprintf(stderr,"start ad??\n");
       if (!NimBLEDevice::getAdvertising()->isAdvertising()) {
         fprintf(stderr,"start ad\n");
         NimBLEDevice::startAdvertising();
@@ -178,16 +186,19 @@ extern "C" void app_main() {
       gpio_set_level(GLED,ledOn ? LOW : HIGH);
       ledOn = !ledOn;
     } else {
+      gpio_set_level(GLED, HIGH);
       if (NimBLEDevice::getAdvertising()->isAdvertising()) {
         acTime = millis();
         fprintf(stderr,"stop ad\n");
         NimBLEDevice::stopAdvertising();
       }
-      readData();
+      readData(dev_handle);
       CheckDrain();
       pStat->setValue<CellStatus>(cs); // send status
       pStat->notify();
+      gpio_set_level(GLED, LOW);
     }
+
     vTaskDelayUntil( &xLastWakeTime, pdMS_TO_TICKS(cellSett.time) );
   }
 }

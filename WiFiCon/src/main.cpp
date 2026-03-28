@@ -26,10 +26,16 @@ uint32_t statusMS=0,tempMS=0;
 HTTPClient http;
 atomic_flag taskRunning(0);
 Ticker watchDog,slider;
+struct tm curTime;
 
 time_t lastEventTime=0;
 int curEvent=0;
+uint16_t daysTilRunUp = 1;
+uint8_t curDay = 0;
 Event evts[MAX_EVENTS];
+
+uint32_t firstCellBalanceTime;
+uint16_t CellsDiff[MAX_CELLS];
 
 BMSStatus st;
 
@@ -198,7 +204,7 @@ void limits(AsyncWebServerRequest *request){
   root["bdVolts"]=statSets.bdVolts;
   root["ChargePct"]=statSets.ChargePct;
   root["ChargePctRec"]=statSets.ChargePctRec;
-  root["ChargeRate"]=statSets.ChargeRate;
+  root["RunUpDays"]=statSets.RunUpDays;
   root["CellsOutMin"]=statSets.CellsOutMin;
   root["CellsOutMax"]=statSets.CellsOutMax;
   root["CellsOutTime"]=statSets.CellsOutTime;
@@ -206,6 +212,8 @@ void limits(AsyncWebServerRequest *request){
   root["MainID"] = statSets.MainID;
   root["PVID"] = statSets.PVID;
   root["InvID"] = statSets.InvID;
+  root["daysTilRunUp"] = daysTilRunUp;
+
   JsonObject obj = root.createNestedObject("limitSettings");
   for (int l0=0;l0<LimitConsts::Max0;l0++) {
     for (int l1=0;l1<LimitConsts::Max1;l1++) {
@@ -371,14 +379,19 @@ void batt(AsyncWebServerRequest *request){
 
   root["socLastAdj"] = st.lastAdjCoulomb;
   root["BatAHMeasured"] = st.BatAHMeasured > 0 ? String(st.BatAHMeasured) : String("N/A");
-
   root["nCells"] = dynSets.nCells;
 
-  root["cellCnt"] = dynSets.cellSets.cnt;
-  root["cellDelay"] = dynSets.cellSets.delay;
-  root["resPwrOn"] = dynSets.cellSets.resPwrOn;
+  root["cellCnt"] = dynSets.cnt;
+  root["cellDelay"] = dynSets.delay;
+  root["resPwrOn"] = dynSets.resPwrOn;
   root["drainV"] = dynSets.cellSets.drainV;
   root["cellTime"] = dynSets.cellSets.time;
+  JsonArray data = root.createNestedArray("cells");
+  for (uint8_t i = 0; i < dynSets.nCells; i++) {
+    JsonObject cell = data.createNestedObject();
+    cell["c"] = i;
+    cell["s"] = CellsDiff[i];
+  }
 
   serializeJson(doc, *response);
   request->send(response);
@@ -518,10 +531,21 @@ void allIn(AsyncWebServerRequest *request) {
   sendSuccess(request);
 }
 
-void fullChg(AsyncWebServerRequest *request) {
-  AMsg msg;
+void ResetCellsDiff()
+{
+    for (int i=0;i<MAX_CELLS;i++) CellsDiff[i] = 0xffff;
+}
+
+void doFullChg(uint16_t val) {
+  SettingMsg msg;
   msg.cmd = FullChg;
+  msg.val = val;
+  if (val)
+    ResetCellsDiff();
   BMSSend(&msg);
+}
+void fullChg(AsyncWebServerRequest *request) {
+  doFullChg(!st.doFullChg);
   sendSuccess(request);
 }
 
@@ -674,6 +698,7 @@ void fillStatusDoc(JsonVariant root) {
   root["nCells"] = dynSets.nCells;
 
   JsonArray data = root.createNestedArray("cells");
+  uint16_t sumV = 0;
   for (uint8_t i = 0; i < dynSets.nCells; i++) {
     JsonObject cell = data.createNestedObject();
     cell["c"] = i;
@@ -682,7 +707,10 @@ void fillStatusDoc(JsonVariant root) {
     cell["bt"] = fromCel(st.cells[i].bdTemp);
     cell["d"] = st.cells[i].draining;
     cell["l"] = !st.cells[i].conn;
+    cell["s"] = 
+    sumV += st.cells[i].volts;
   }
+  root["mVDiff"] = sumV - st.lastPackMilliVolts;
 }
 
 void status(AsyncWebServerRequest *request){
@@ -765,8 +793,12 @@ void savelimits(AsyncWebServerRequest *request) {
     statSets.bdVolts = request->getParam("bdVolts", true)->value().toInt();
   if (request->hasParam("ChargePctRec", true))
     statSets.ChargePctRec = request->getParam("ChargePctRec", true)->value().toInt();
-  if (request->hasParam("ChargeRate", true))
-    statSets.ChargeRate = request->getParam("ChargeRate", true)->value().toInt();
+  if (request->hasParam("RunUpDays", true))
+    statSets.RunUpDays = request->getParam("RunUpDays", true)->value().toInt();
+  if (statSets.RunUpDays < 1) statSets.RunUpDays = 1;
+  if (daysTilRunUp > statSets.RunUpDays)
+    daysTilRunUp = statSets.RunUpDays;
+
   if (request->hasParam("CellsOutMin", true))
     statSets.CellsOutMin = request->getParam("CellsOutMin", true)->value().toInt();
   if (request->hasParam("CellsOutMax", true))
@@ -884,6 +916,8 @@ void saveemail(AsyncWebServerRequest *request){
 }
 
 void onconnect(WiFiEvent_t event, WiFiEventInfo_t info) {
+  //Serial.printf("%d\n",event);
+  if (event == WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_GOT_IP)
   Serial.println(WiFi.localIP());
 }
 
@@ -894,9 +928,14 @@ void WiFiInit() {
     Serial.printf("%s:%s",wifiSets.apName,wifiSets.apPW);
     WiFi.setHostname(wifiSets.apName);
     WiFi.softAP(wifiSets.apName,wifiSets.apPW,1,1);
-  } else WiFi.softAP("ADVBMS_CONTROLLER");
-  if (wifiSets.ssid[0] != 0)
+  } else {
+    Serial.printf("ADVBMS_CONTROLLER");
+    WiFi.softAP("ADVBMS_CONTROLLER");
+  }
+  if (wifiSets.ssid[0] != 0) {
+    Serial.printf("%s:%s",wifiSets.ssid,wifiSets.password);
     WiFi.begin(wifiSets.ssid,wifiSets.password);
+  }
 }
 
 void savewifi(AsyncWebServerRequest *request){
@@ -920,9 +959,6 @@ void savewifi(AsyncWebServerRequest *request){
 void savecellset(AsyncWebServerRequest *request) {
   CellSetts msg;
   msg.cmd = SetCellSetts;
-  msg.cellSets.cnt = request->getParam("cellCnt", true)->value().toInt();
-  msg.cellSets.delay = request->getParam("cellDelay", true)->value().toInt();
-  msg.cellSets.resPwrOn = request->hasParam("resPwrOn", true) && request->getParam("resPwrOn", true)->value().equals("on");
   msg.cellSets.time = request->getParam("cellTime", true)->value().toInt();
   msg.cellSets.drainV = request->getParam("drainV", true)->value().toInt();
   dynSets.cellSets = msg.cellSets;
@@ -943,6 +979,17 @@ void saveItem(const AsyncWebServerRequest *request,const char* n,uint8_t cmd,uin
 }
 
 void savecapacity(AsyncWebServerRequest *request) {
+  saveItem(request,"cellDelay",SetDelay,dynSets.delay);
+  saveItem(request,"cellCnt",SetCnt,dynSets.cnt);
+  bool rpo = request->hasParam("resPwrOn", true) && request->getParam("resPwrOn", true)->value().equals("on");
+  if (rpo != dynSets.resPwrOn)
+    {
+      SettingMsg msg;
+      msg.cmd = SetResPwrOn;
+      msg.val = rpo;
+      BMSSend(&msg);
+    }
+  dynSets.resPwrOn = rpo;
   saveItem(request,"CurSOC",SetCurSOC,101);
   saveItem(request,"BattAH",SetBattAH,dynSets.BattAH);
   saveItem(request,"TopAmps",SetTopAmps,dynSets.TopAmps);
@@ -1048,39 +1095,37 @@ void checkTemps()
 {
   tempMS = millis();
   digitalWrite(RESISTOR_PWR,HIGH);
-  if (dynSets.cellSets.delay)
-    delay(dynSets.cellSets.delay);
+  if (dynSets.delay)
+    delay(dynSets.delay);
 //  uint16_t vp;
 //  uint32_t rt;
 //  double T;
-  Temp1 = BMSReadTemp(TEMP1,false,statSets.bdVolts,dispSets.t1B,dispSets.t1R,47000,dynSets.cellSets.cnt);
+  Temp1 = BMSReadTemp(TEMP1,false,statSets.bdVolts,dispSets.t1B,dispSets.t1R,47000,dynSets.cnt);
 //  Serial.printf("1: %d %d %d %f, ",vp,Temp1,rt,T);
-  Temp2 = BMSReadTemp(TEMP2,false,statSets.bdVolts,dispSets.t2B,dispSets.t2R,47000,dynSets.cellSets.cnt);
+  Temp2 = BMSReadTemp(TEMP2,false,statSets.bdVolts,dispSets.t2B,dispSets.t2R,47000,dynSets.cnt);
   // 2678 is 0 inches
   // 3000 is known R
   // 150 is slope
   // 8inches is 100%
-  uint32_t v = BMSReadVoltage(WATER,dynSets.cellSets.cnt);
-//  Serial.printf("W: Cnt: %d %d %d\n",dynSets.cellSets.cnt,v,((v * 300000) / (statSets.bdVolts - v)));
+  uint32_t v = BMSReadVoltage(WATER,dynSets.cnt);
+//  Serial.printf("W: Cnt: %d %d %d\n",dynSets.cnt,v,((v * 300000) / (statSets.bdVolts - v)));
   if (v > 1210)
     Water = 200;
   else Water = 1000*(2678 - ((v * 3000) / (statSets.bdVolts - v))) / (1636*8);
 
   // min R 0, max R 90
   // 180 is known R, * 100 to get %
-  v = BMSReadVoltage(GAS,dynSets.cellSets.cnt);
+  v = BMSReadVoltage(GAS,dynSets.cnt);
 //  Serial.printf("G: %d %d %d\n",statSets.bdVolts,v,((v * 18000) / (statSets.bdVolts - v)));
   if (v > 1210)
     Gas = 200;
   else Gas = ((v * 18000) / (statSets.bdVolts - v)) / 120; // should be a 90ohm
 //  Serial.printf("2: %d %d\n",vp,Temp2);
-  if (!dynSets.cellSets.resPwrOn)
+  if (!dynSets.resPwrOn)
     digitalWrite(RESISTOR_PWR,LOW);
 
-  struct tm t;
-  getLocalTime(&t);
-  int curMin = (t.tm_hour * 60) + t.tm_min;
-  if (t.tm_year < 100)
+  int curMin = (curTime.tm_hour * 60) + curTime.tm_min;
+  if (curTime.tm_year < 100)
     return;
   for (int y=0;y<W_RELAY_TOTAL;y++) {
     RelaySettings *rp = &relSets.relays[y];
@@ -1104,12 +1149,12 @@ void checkTemps()
     TempSet* ts = &dispSets.tSets[i];
     if (ts->relay == 255) continue;
     if (ts->startMin < ts->endMin) {
-      if (!(ts->dows & 1 << t.tm_wday)) continue;
+      if (!(ts->dows & 1 << curTime.tm_wday)) continue;
       if (ts->startMin > curMin || ts->endMin < curMin) continue;
     } else {
       if (ts->startMin > curMin && ts->endMin < curMin) continue;
-      if (ts->startMin < curMin && !(ts->dows & 1 << t.tm_wday)) continue;
-      int dow = t.tm_wday - 1;
+      if (ts->startMin < curMin && !(ts->dows & 1 << curTime.tm_wday)) continue;
+      int dow = curTime.tm_wday - 1;
       if (dow < 0) dow = 6;
       if (ts->endMin > curMin && !(ts->dows & 1 << dow)) continue;
     }
@@ -1228,6 +1273,30 @@ void checkStatus()
       Serial.printf("Chg: %d to %d\n",n,previousRelayState[n]);
     }
   }
+  getLocalTime(&curTime);
+  if (curTime.tm_mday != curDay) {
+    curDay = curTime.tm_mday;
+    daysTilRunUp--;
+    if (!daysTilRunUp) {
+      doFullChg(1);
+      daysTilRunUp = statSets.RunUpDays;
+    }
+  }
+  if (st.doFullChg) {
+    int i=0;
+    for (i=0;i<dynSets.nCells && CellsDiff[i] == 0xffff;i++);
+    bool isFirst = !(i<dynSets.nCells);
+    
+    for (int i=0;i<dynSets.nCells;i++) {
+      if (CellsDiff[i] != 0xffff)
+        continue;
+      if (st.cells[i].volts < dynSets.cellSets.drainV)
+        continue;
+      if (isFirst)
+        firstCellBalanceTime = millis();
+      CellsDiff[i] = (uint16_t)(firstCellBalanceTime - millis())/1000;
+    }
+  }
   watchDog.once_ms(CHECKSTATUS+WATCHDOGSLOP,doWatchDog);
 }
 
@@ -1290,9 +1359,12 @@ void setup() {
     wifiSets.password[0] = 0;
     wifiSets.apName[0] = 0;
     wifiSets.apPW[0] = 0;
+  }
     strcpy(wifiSets.ssid,"mekJ122");
     strcpy(wifiSets.password,"aloha459");
-  }
+//    strcpy(wifiSets.ssid,"Eldorado Guest");
+//    strcpy(wifiSets.password,"mauisunset");
+//  WiFi.onEvent(onconnect);
   WiFi.onEvent(onconnect, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_GOT_IP);
   WiFiInit();
   BMSInitStatus(&st);
@@ -1340,12 +1412,13 @@ void setup() {
   msg.cmd = StatQuery;
   while (BMSWaitFor(&msg,StatSets))
     Serial.println("Again");
-  Serial.println("Got static");
+  Serial.println("got static sets");
   msg.cmd = DynQuery;
   BMSWaitFor(&msg,DynSets);
   for (int i=0;i<MAX_EVENTS;i++)
     evts[i].when = 0;
   ArduinoOTA.begin();
+  ResetCellsDiff();
   digitalWrite(BLUE_LED,0);
 }
 
