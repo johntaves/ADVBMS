@@ -24,21 +24,34 @@
 
 NimBLECharacteristic *pStat,*pDump,*pSett;
 NimBLEServer *pServer;
-bool devConn=false,ledOn=false;
+uint32_t connectedTime=0;
+bool ledOn=false;
 CellSettings cellSett;
 CellStatus cs;
 uint32_t startDrainMSecs=0,goalDrainMSecs=0;
-uint32_t acTime=0;
 i2c_master_bus_handle_t bus_handle;
+// -30 inc by 1's
+uint32_t Rvals[] {173247,168232,163358,158620,154015,149541,145194,140970,136869,132885,129016,125261,121614,118075,114640,111307,108073,104935,101892,98940,
+96077,93301,90609,87999,85470,83018,80642,78339,76108,73946,71852,69823,67858,65955,64111,62326,60597,58923,57302,55732,
+54212,52740,51316,49936,48600,47307,46055,44842,43668,42531,41429,40363,39329,38329,37359,36419,35509,34626,33771,32941,
+32137,31357,30600,29865,29153,28461,27789,27136,26502,25885,25286,24704,24137,23585,23049,22526,22017,21520,21037,20565,
+20105,19657,19218,18791,18373,17965,17566,17176,16794,16421,16055,15698,15348,15005,14669,14340,14017,13701,13391,13087,
+12789,12497,12211,11930,11654,11384,11119,10859,10604,10354,10109,9869,9634,9404,9178,8957,8741,8530,8323,8121,
+7924,7731,7543,7360,7181,7007,6837,6673,6513,6357,6206,6060,5919,5782,5650,5522,5399,5281,5167,5058,
+4953,4853,4757,4665,4578,4495,4416,4341,4270,4203,4140,4080,4023,3971,3921,3874,3830,3789,3750,3713,
+3679,3646,3614,3584,3555,3526,3498,3469,3440,3411,3380,3347,3312,3275,3235,3192,3144,3092,3035,2973,
+2904,2828,2745,2653,2553,2443,2323,2192,2049,1893};
+#define RVALS_CNT (sizeof(Rvals)/sizeof(Rvals[0]))
 
 class ServerCallbacks: public NimBLEServerCallbacks {
     void onConnect(BLEServer* pServer,NimBLEConnInfo& connInfo) {
-      devConn = true;
+      connectedTime = millis();
+      if (!connectedTime) connectedTime = 1; // 1/4b chance of starting at rollover!
       fprintf(stderr,"Connected\n");
     };
  
     void onDisconnect(BLEServer* pServer,NimBLEConnInfo& connInfo, int reason) {
-      devConn = false;
+      connectedTime = 0;
       fprintf(stderr,"Disconnected\n");
     }
 } serverCallbacks;
@@ -83,7 +96,8 @@ class DumpCallback: public NimBLECharacteristicCallbacks {
 
 void readData(i2c_master_dev_handle_t dev_handle) {
   gpio_set_level(TEMPPWR, HIGH);
-  uint16_t mV0,mV1;
+  uint32_t mV0;
+  uint16_t mV1;
   ads1115_t ads = ads1115_config(dev_handle);
   ads1115_set_pga(&ads,ADS1115_FSR_6_144);
   ads1115_set_mode(&ads,ADS1115_MODE_SINGLE);
@@ -92,22 +106,38 @@ void readData(i2c_master_dev_handle_t dev_handle) {
 
   ads1115_set_mux(&ads, ADS1115_MUX_2_GND);
   cs.volts=ads1115_get_mV(&ads);
-
   uint32_t curTime = millis();
   while ((millis() - curTime) < 10) ; // let temp resistor get volts because of the capacitor and resistor delay
 
-  ads1115_set_mux(&ads, ADS1115_MUX_0_GND);
-  mV0=ads1115_get_mV(&ads);
-
-  cs.tempExt = BMSComputeTemp(mV0,false,cs.volts ? cs.volts : 3300,BCOEF,47000,51000);
-
   ads1115_set_mux(&ads, ADS1115_MUX_1_GND);
+  mV0=ads1115_get_mV(&ads);
+  ads1115_set_mux(&ads, ADS1115_MUX_0_GND);
   mV1=ads1115_get_mV(&ads);
-  cs.tempBd = BMSComputeTemp(mV1,false,cs.volts ? cs.volts : 3300,BCOEF,47000,51000);
   gpio_set_level(TEMPPWR,LOW);
-  fprintf(stderr,"V: %d, Tb: %d, Tx: %d, D: %d, Ms: %lu\n",cs.volts,cs.tempBd,cs.tempExt,cs.draining, millis());
-}
 
+  cs.tempExt = INT8_MIN;
+  if (cs.volts > mV0) {
+    uint32_t Rt = 20000 * mV0 / (cs.volts - mV0);
+    uint32_t l=0,h=RVALS_CNT,lastV=RVALS_CNT+1,v=0;
+
+    while (v != lastV) {
+      lastV = v;
+      v = (l + h) / 2;
+      if (Rt < Rvals[v]) l = v;
+      else h = v;
+    }
+    if (v && v < RVALS_CNT) cs.tempExt = v/2-30;
+  }
+  cs.tempBd = BMSComputeTemp(mV1,false,cs.volts ? cs.volts : 3300,BCOEF,47000,51000);
+  //fprintf(stderr,"V: %d, Tb: %d, Tx: %d, D: %d, Ms: %lu\n",cs.volts,cs.tempBd,cs.tempExt,cs.draining, millis());
+}
+void startAdvertising(NimBLEAdvertising *pAdvertising) {
+  pAdvertising->addServiceUUID(NimBLEUUID((uint16_t)0x180F));
+  pAdvertising->setName("JBT");
+  pAdvertising->setPreferredParams(12,4000);
+  pAdvertising->enableScanResponse(true);
+  pAdvertising->start();
+}
 extern "C" void app_main() {
   gpio_set_direction(GLED, GPIO_MODE_OUTPUT);
   gpio_set_direction(TEMPPWR, GPIO_MODE_OUTPUT);
@@ -126,28 +156,23 @@ extern "C" void app_main() {
   };
   ESP_ERROR_CHECK( esp_pm_configure(&pm_config) );
   fprintf(stderr,"start nimble\n");
-  NimBLEDevice::init("LiFePo4 Cell");
+  NimBLEDevice::init("JBT");
   fprintf(stderr,"MAC: %s\n",NimBLEDevice::toString().c_str());
   pServer = NimBLEDevice::createServer();
   pServer->setCallbacks(&serverCallbacks);
-  NimBLEService *pService = pServer->createService(BLEUUID((uint16_t)0x180F));
+  NimBLEService *pService = pServer->createService(NimBLEUUID((uint16_t)0x180F));
 
-  pStat = pService->createCharacteristic(BLEUUID((uint16_t)0x2B18),NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
-  pDump = pService->createCharacteristic(BLEUUID((uint16_t)0X2AE2),NIMBLE_PROPERTY::WRITE);
+  pStat = pService->createCharacteristic(NimBLEUUID((uint16_t)0x2B18),NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+  pDump = pService->createCharacteristic(NimBLEUUID((uint16_t)0X2AE2),NIMBLE_PROPERTY::WRITE);
   pDump->setCallbacks(&dumpCallback);
 
-  pSett = pService->createCharacteristic(BLEUUID((uint16_t)0x2B15),NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE);
+  pSett = pService->createCharacteristic(NimBLEUUID((uint16_t)0x2B15),NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE);
   pSett->setCallbacks(&settCallback);
   pSett->setValue<CellSettings>(cellSett);
+  pServer->start();
 
-  
-  pService->start();
   NimBLEAdvertising *pAdvertising = NimBLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(BLEUUID((uint16_t)0x180F));
-  pAdvertising->setName("LiFePo4 Cell");
-  pAdvertising->setPreferredParams(12,4000);
-  pAdvertising->enableScanResponse(true);
-  pAdvertising->start();
+  startAdvertising(pAdvertising);
 
   TickType_t xLastWakeTime= xTaskGetTickCount();
   i2c_master_bus_config_t conf = {
@@ -176,21 +201,25 @@ extern "C" void app_main() {
   ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle));
   //conf.clk_flags = I2C_SCLK_SRC_FLAG_LIGHT_SLEEP;          /*!< Optional, you can use I2C_SCLK_SRC_FLAG_* flags to choose i2c source clock here. */
   for( ;; ) {
-    if (!devConn) {
+    if (!connectedTime) {
       NoDrain();
-        fprintf(stderr,"start ad??\n");
-      if (!NimBLEDevice::getAdvertising()->isAdvertising()) {
+      NimBLEAdvertising *pAdvertising = NimBLEDevice::getAdvertising();
+      if (!pAdvertising->isAdvertising()) {
         fprintf(stderr,"start ad\n");
-        NimBLEDevice::startAdvertising();
+        esp_restart();
+        startAdvertising(pAdvertising);
+//        pm_config.light_sleep_enable = false;
+//        ESP_ERROR_CHECK( esp_pm_configure(&pm_config) );
       }
       gpio_set_level(GLED,ledOn ? LOW : HIGH);
       ledOn = !ledOn;
-    } else {
+    } else if ((millis() - connectedTime) > 1000) { // wait 1 sec to hopefully let the client get the service
       gpio_set_level(GLED, HIGH);
       if (NimBLEDevice::getAdvertising()->isAdvertising()) {
-        acTime = millis();
         fprintf(stderr,"stop ad\n");
         NimBLEDevice::stopAdvertising();
+//        pm_config.light_sleep_enable = true;
+//        ESP_ERROR_CHECK( esp_pm_configure(&pm_config) );
       }
       readData(dev_handle);
       CheckDrain();
@@ -202,3 +231,4 @@ extern "C" void app_main() {
     vTaskDelayUntil( &xLastWakeTime, pdMS_TO_TICKS(cellSett.time) );
   }
 }
+

@@ -110,15 +110,22 @@ void BMSSend(StrMsg* m) {
   BMSSendRaw((uint8_t*)m,sizeof(StrMsg) - sizeof(m->msg) + strlen(m->msg));
 }
 
-uint8_t lastCmd;
+uint8_t waitingFor = Nada;
+bool foundWaitingFor = false;
 
-bool BMSWaitFor(AMsg* mp,uint8_t cmd) {
-  uint32_t stMs = millis();
+bool BMSWaitFor(AMsg* mp,uint8_t cmd,uint16_t timeout) {
+  if (waitingFor != Nada) {
+    Serial.println("Error: Already waiting for something");
+    abort();
+  }
+  waitingFor = cmd;
+  foundWaitingFor = false;
   BMSSend(mp);
-  lastCmd = Panic;
-  while (lastCmd != cmd && (millis() - stMs) < 100)
+  uint32_t stMs = millis();
+  while (!foundWaitingFor && (millis() - stMs) < timeout)
     dataSer.update();
-  return lastCmd != cmd;
+  waitingFor = Nada;
+  return !foundWaitingFor;
 }
 
 void onSerData(const uint8_t *d, size_t cnt)
@@ -126,7 +133,8 @@ void onSerData(const uint8_t *d, size_t cnt)
   if (cnt && CRC8(&d[1],cnt-1) == d[0] && commCB) {
     AMsg* m = (AMsg*)d;
     commCB(m);
-    lastCmd = m->cmd;
+    if (m->cmd == waitingFor)
+      foundWaitingFor = true;
   }
 }
 

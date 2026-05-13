@@ -7,33 +7,38 @@ union ArrTo8 {
 } __attribute__((packed));
 union ArrTo4 {
   byte array[4];
-  uint32_t val;
+  int32_t val;
 } __attribute__((packed));
 union ArrTo2 {
   byte array[2];
-  uint16_t val;
+  int16_t val;
 } __attribute__((packed));
 
 int cnt=0;
-uint32_t last = 0,clk=0;
+uint32_t last = 0;
 int led=0;
 uint16_t curId = 0x300;
-#define SIZE 2000
-int32_t buff[SIZE];
+struct chunk {
+  long id;
+  int packetSize;
+  uint8_t code;
+  int64_t val;
+} buff[100];
+int curWrite=0,curRead=0;
 
 void canSender(uint16_t id,byte n,byte p[],int len) {
-//    Serial.printf("Asking 0x%x 0x%x, ",id | 0xFB,n);
+    Serial.printf("Asking 0x%x 0x%x, ",id | 0xFB,n);
     byte mod = 0xfb;
     if (len) mod = 0xfa;
     if (!CAN.beginPacket (id | mod))
       Serial.println("Cannot begin packet"); 
     CAN.write (n);
     for (int i=0;i<len;i++) {
-//      Serial.printf("%x",p[i]);
+      Serial.printf("%x",p[i]);
       CAN.write(p[i]);
     }
     CAN.endPacket();
-//    Serial.println ("done");
+    Serial.println ("done");
 }
 void canSetID(byte n,byte x) {
     if (!CAN.beginPacket (0x3fA))
@@ -93,40 +98,33 @@ int64_t ReadIt(int len, int inc) {
 
 void CANReceive(int packetSize) {
     // received a packet
-  if (clk) {
-    if (cnt < SIZE)
-      buff[cnt++] = ReadIt(packetSize,1);
-  } else {
-    if (CAN.packetExtended()) {
-      Serial.print("extended ");
-    }
-
-    if (CAN.packetRtr()) {
-      // Remote transmission request, packet contains no data
-      Serial.print("RTR ");
-    }
-
-    int id = CAN.packetId();
-    Serial.printf("i: %02x ",id);
-
-    if (CAN.packetRtr()) {
-      Serial.print(" and requested length ");
-      Serial.println(CAN.packetDlc());
-    } else {
-      id &= 0xff;
-      if (id == 0xfc) {
-        int code = CAN.read();
-        packetSize--;
-        Serial.printf(", c: 0x%x, l: %d ",code,packetSize);
-      }
-      int val;
-      if (id < 0xfa) val = ReadIt(packetSize,1);
-      else val = ReadIt(packetSize,-1);
-      Serial.printf(" l: %d v: %d",packetSize,val);
-      // only print packet data for non-RTR packets
-      Serial.println();
-    }
+  if (CAN.packetExtended()) {
+    Serial.print("extended ");
   }
+
+  if (CAN.packetRtr()) {
+    // Remote transmission request, packet contains no data
+    Serial.print("RTR ");
+  }
+  buff[curWrite].packetSize = packetSize;
+  long id = buff[curWrite].id = CAN.packetId();
+
+  if (CAN.packetRtr()) {
+    Serial.print(" and requested length ");
+    Serial.println(CAN.packetDlc());
+  } else {
+    id &= 0xff;
+    if (id == 0xfc) {
+      buff[curWrite].code = CAN.read();
+      packetSize--;
+      
+    }
+    if (id < 0xfa) buff[curWrite].val = ReadIt(packetSize,1);
+    else buff[curWrite].val = ReadIt(packetSize,-1);
+  }
+  curWrite++;
+  if (curWrite >= sizeof(buff)/sizeof(chunk))
+    curWrite=0;
 }
 
 void FindIt()
@@ -152,6 +150,7 @@ void setup() {
 void loop() {
   if (Serial.available() > 0) {
     char b = Serial.read();
+     Serial.println(b);
     switch (b) {
       case 'c': canSender(curId,0x04,NULL,0); break;
       case 'i': canSender(curId,0x31,NULL,0); break;
@@ -171,8 +170,18 @@ void loop() {
         }
         break; 
       case 'm': {
-        byte y[] = { 0x0,0x1B };
-        canSender(curId,0x12,y,2); }
+        char x[5];
+        int amt=0;
+        while (amt < 4)
+          amt += Serial.read(&x[amt],4);
+        x[4] = 0;
+        Serial.println(x);
+        byte y[] = { 0x1e,0x1b };
+        byte val[3];
+        sscanf(x,"%hx",val);
+        val[2]=val[0];val[0]=val[1];val[1]=val[2];
+        Serial.printf("0x%02x 0x%02x\n",val[0],val[1]);
+        canSender(curId,0x12,val,2); }
         break; 
       case 'd': canSetIDs(curId >> 8); break;
       case '3': curId = 0x300; Serial.println(curId); break;
@@ -194,14 +203,10 @@ void loop() {
     digitalWrite(GPIO_NUM_23,led % 2);
     led++;
   }
-  if (cnt == SIZE) {
-    uint32_t t = millis() - clk;
-    Serial.printf("%dms for %d samples (%dms per) \n",t,SIZE,t/SIZE);
-    clk = 0;
-    cnt = 0;
-    byte y[] = { 0,0x13 };
-    canSender(curId,0x12,y,2);
-    for(int i=0;i<SIZE;i++)
-      Serial.printf("A: %d\n",buff[i]);
+  if (curRead != curWrite) {
+    Serial.printf("i: %02x, c: 0x%x, l: %d, val:%lld\n",buff[curRead].id,buff[curRead].code,buff[curRead].packetSize,buff[curRead].val);
+    curRead++;
+    if (curRead >= sizeof(buff)/sizeof(chunk))
+      curRead = 0;
   }
 }

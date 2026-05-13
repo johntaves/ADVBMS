@@ -169,6 +169,6 @@ extern bool readEE(const char* name,uint8_t *p,size_t s);
 extern void writeEE(const char* name,uint8_t *p,size_t s);
 extern void InitRelays(RelaySettings* rp,int num);
 extern void BMSSend(StrMsg* m);
-extern bool BMSWaitFor(AMsg*d,uint8_t cmd);
+extern bool BMSWaitFor(AMsg*d,uint8_t cmd,uint16_t timeout=100);
 extern void BMSGetSerial();
 #endif

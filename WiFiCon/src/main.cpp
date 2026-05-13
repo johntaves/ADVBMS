@@ -21,10 +21,11 @@
 // email did not work going from unset to sent. A reboot seemed to help
 
 char debugstr[200];
-bool emailSetup=false,writeCommSet=false,writeWifiSet=false,writeDispSet=false,writeRelaySet=false;
-uint32_t statusMS=0,tempMS=0;
+bool emailSetup=false,writeCommSet=false,writeWifiSet=false
+  ,writeDispSet=false,writeRelaySet=false,setDoFullChg = false;
+uint32_t statusMS=0,tempMS=0,wifiMS=0;
+uint8_t wifiDeadCnt=0;
 HTTPClient http;
-atomic_flag taskRunning(0);
 Ticker watchDog,slider;
 struct tm curTime;
 
@@ -193,7 +194,7 @@ void net(AsyncWebServerRequest *request){
 void limits(AsyncWebServerRequest *request){  
   AMsg msg;
   msg.cmd = StatQuery;
-  bool notRecd = BMSWaitFor(&msg,StatSets);
+  bool notRecd = BMSWaitFor(&msg,StatSets,200);
   AsyncResponseStream *response =
       request->beginResponseStream("application/json");
   DynamicJsonDocument doc(8192);
@@ -234,7 +235,7 @@ void limits(AsyncWebServerRequest *request){
 void relays(AsyncWebServerRequest *request){  
   AMsg msg;
   msg.cmd = StatQuery;
-  bool notRecd = BMSWaitFor(&msg,StatSets);
+  bool notRecd = BMSWaitFor(&msg,StatSets,200);
   AsyncResponseStream *response =
       request->beginResponseStream("application/json");
   DynamicJsonDocument doc(8192);
@@ -367,7 +368,7 @@ void slides(AsyncWebServerRequest *request){
 void batt(AsyncWebServerRequest *request){
   AMsg msg;
   msg.cmd = DynQuery;
-  bool notRecd = BMSWaitFor(&msg,DynSets);
+  bool notRecd = BMSWaitFor(&msg,DynSets,200);
   AsyncResponseStream *response =
       request->beginResponseStream("application/json");
   DynamicJsonDocument doc(8192);
@@ -707,7 +708,6 @@ void fillStatusDoc(JsonVariant root) {
     cell["bt"] = fromCel(st.cells[i].bdTemp);
     cell["d"] = st.cells[i].draining;
     cell["l"] = !st.cells[i].conn;
-    cell["s"] = 
     sumV += st.cells[i].volts;
   }
   root["mVDiff"] = sumV - st.lastPackMilliVolts;
@@ -915,43 +915,34 @@ void saveemail(AsyncWebServerRequest *request){
   sendSuccess(request);
 }
 
-void onconnect(WiFiEvent_t event, WiFiEventInfo_t info) {
+void wifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
   //Serial.printf("%d\n",event);
   if (event == WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_GOT_IP)
   Serial.println(WiFi.localIP());
 }
 
-void WiFiInit() {
-  WiFi.persistent(false);
-  WiFi.disconnect(true,true);
-  if (strlen(wifiSets.apName)) {
-    Serial.printf("%s:%s",wifiSets.apName,wifiSets.apPW);
-    WiFi.setHostname(wifiSets.apName);
-    WiFi.softAP(wifiSets.apName,wifiSets.apPW,1,1);
-  } else {
-    Serial.printf("ADVBMS_CONTROLLER");
-    WiFi.softAP("ADVBMS_CONTROLLER");
-  }
-  if (wifiSets.ssid[0] != 0) {
-    Serial.printf("%s:%s",wifiSets.ssid,wifiSets.password);
-    WiFi.begin(wifiSets.ssid,wifiSets.password);
+void SetPW(AsyncWebServerRequest *request,const char* src,char* dest) {
+  if (request->hasParam(src, true)) {
+    String pw = request->getParam(src,true)->value();
+    if (pw == "null") dest[0] = 0;
+    else if (pw.length()) {
+      if (pw.length() < 8) {
+        sendSuccess(request,"PW too short, 8 chars or none, or null",false);
+        return;
+      }
+      pw.toCharArray(dest,sizeof(wifiSets.apPW));
+    }
   }
 }
 
 void savewifi(AsyncWebServerRequest *request){
   if (request->hasParam("apName", true))
     request->getParam("apName", true)->value().toCharArray(wifiSets.apName,sizeof(wifiSets.apName));
-  if (request->hasParam("apPW", true))
-    request->getParam("apPW", true)->value().toCharArray(wifiSets.apPW,sizeof(wifiSets.apPW));
-  if (strlen(wifiSets.apPW) && strlen(wifiSets.apPW) < 8) {
-    sendSuccess(request,"apPW too short, 8 chars or none",false);
-    return;
-  }
-
+  SetPW(request,"apPW",wifiSets.apPW);
+  
   if (request->hasParam("ssid", true))
     request->getParam("ssid", true)->value().toCharArray(wifiSets.ssid,sizeof(wifiSets.ssid));
-  if (request->hasParam("password", true))
-    request->getParam("password", true)->value().toCharArray(wifiSets.password,sizeof(wifiSets.password));
+  SetPW(request,"password",wifiSets.password);
   writeWifiSet = true;
   sendSuccess(request);
 }
@@ -1053,6 +1044,43 @@ void startServer() {
   server.begin();
 }
 
+void CheckWifi() {
+  wifiMS = millis();
+  if (WiFi.status() != WL_CONNECTED) {
+    wifiDeadCnt++;
+    Serial.printf("WiFi not connected %d\n",wifiDeadCnt);
+    if (wifiDeadCnt >= 5) {
+      if (WiFi.getMode() != WIFI_MODE_AP && WiFi.getMode() != WIFI_MODE_APSTA) {
+         Serial.println("Starting AP");
+         WiFi.disconnect();
+        WiFi.softAP("TheBatt");
+        startServer();
+      }
+    } else {
+      WiFi.disconnect();
+      WiFi.reconnect();
+    }
+  } else if (wifiDeadCnt) {
+    wifiDeadCnt = 0;
+    WiFi.softAPdisconnect();
+  }
+}
+
+void WiFiInit() {
+  WiFi.persistent(false);
+  WiFi.disconnect(true,true);
+  WiFi.mode(WIFI_MODE_NULL);
+  WiFi.setHostname("TheBatt");
+  if (wifiSets.ssid[0] != 0) {
+    Serial.printf("%s:%s\n",wifiSets.ssid,wifiSets.password);
+    WiFi.begin(wifiSets.ssid,wifiSets.password);
+    wifiDeadCnt = 0;
+  } else {
+    WiFi.softAP("TheBatt");
+  }
+  Serial.printf("WIFI mode %d\n",WiFi.getMode());
+}
+
 void sendStatus() {
 //Serial.printf("XP: %d, C: %d H: %d\n",uxTaskPriorityGet(NULL),xPortGetCoreID(),uxTaskGetStackHighWaterMark(NULL));
   http.begin("http://advbms.com/PostData.aspx");
@@ -1068,7 +1096,6 @@ void sendStatus() {
   if (res != "OK")
     Serial.println(res);
   http.end();
-  taskRunning.clear();
 }
 
 bool isFromOff(RelaySettings* rs) {
@@ -1233,7 +1260,6 @@ void checkStatus()
 {
   statusMS = millis();
   uint8_t relay[W_RELAY_TOTAL];
-
   for (int8_t y = 0; y < W_RELAY_TOTAL; y++)
   {
     RelaySettings *rp = &relSets.relays[y];
@@ -1273,13 +1299,14 @@ void checkStatus()
       Serial.printf("Chg: %d to %d\n",n,previousRelayState[n]);
     }
   }
-  getLocalTime(&curTime);
-  if (curTime.tm_mday != curDay) {
-    curDay = curTime.tm_mday;
-    daysTilRunUp--;
-    if (!daysTilRunUp) {
-      doFullChg(1);
-      daysTilRunUp = statSets.RunUpDays;
+  if (getLocalTime(&curTime,2)) {
+    if (curTime.tm_mday != curDay) {
+      curDay = curTime.tm_mday;
+      daysTilRunUp--;
+      if (!daysTilRunUp) {
+        setDoFullChg = true;
+        daysTilRunUp = statSets.RunUpDays;
+      }
     }
   }
   if (st.doFullChg) {
@@ -1301,11 +1328,11 @@ void checkStatus()
 }
 
 void MsgEvent(EventMsg *mp) {
-  Serial.println("Event");
   NextEvent(mp);
 }
 void WonSerData(const AMsg *mp)
 {
+//  Serial.printf("Msg: %d\n",mp->cmd);
   if (mp->cmd > FirstEvent && mp->cmd < LastEvent)
     MsgEvent((EventMsg*)mp);
   else switch(mp->cmd) {
@@ -1326,11 +1353,6 @@ void WonSerData(const AMsg *mp)
       break;  
   }
   digitalWrite(BLUE_LED,0);
-}
-
-void xSendStatus(void* unused) {
-  sendStatus();
-  vTaskDelete(NULL);
 }
 
 void setup() {
@@ -1360,12 +1382,11 @@ void setup() {
     wifiSets.apName[0] = 0;
     wifiSets.apPW[0] = 0;
   }
-    strcpy(wifiSets.ssid,"mekJ122");
-    strcpy(wifiSets.password,"aloha459");
+//    strcpy(wifiSets.ssid,"Taves");
+//    strcpy(wifiSets.password,"scruffy2023");
 //    strcpy(wifiSets.ssid,"Eldorado Guest");
 //    strcpy(wifiSets.password,"mauisunset");
-//  WiFi.onEvent(onconnect);
-  WiFi.onEvent(onconnect, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_GOT_IP);
+  WiFi.onEvent(wifiEvent);
   WiFiInit();
   BMSInitStatus(&st);
   if (!readEE("comm",(uint8_t*)&commSets,sizeof(commSets))) {
@@ -1440,7 +1461,10 @@ void loop() {
     writeEE("relay",(uint8_t*)&relSets,sizeof(relSets));
     writeRelaySet = false;
   }
-
+  if (setDoFullChg) {
+    doFullChg(1);
+    setDoFullChg = false;
+  }
   BMSGetSerial();
 
   if (sendEmail && emailSetup && strlen(commSets.senderServer)) {
@@ -1452,6 +1476,8 @@ void loop() {
     checkStatus();
   if ((millis() - tempMS) > 6000)
     checkTemps();
+  if ((millis() - wifiMS) > 15000)
+    CheckWifi();
 
   ArduinoOTA.handle(); // this does nothing until it is initialized
 }

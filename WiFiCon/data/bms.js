@@ -262,10 +262,8 @@ function initCells() {
 function getSettings(s) {
     $.getJSON(s,
         function (data) {
-            if (data.notRecd) {
+            if (data.notRecd)
                 $("#errmess").show().text("Settings not received");
-                return;
-            }
             $("#errmess").hide();
             if (s == "net") {
                 $("input[name='apName']").val(data.apName);

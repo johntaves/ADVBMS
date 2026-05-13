@@ -19,8 +19,9 @@
 
 int8_t analCnt=0,curAnal=0;
 bool shuntOverDue=true,cellsOverDue = true,loadsOff = true,chgOff = true
-  ,writeStatSets=false,writeDynSets=false,writeCellSet=false,missingCell;
+  ,writeStatSets=false,writeDynSets=false,writeCellSet=false;
 uint32_t statusCnt=0,lastHitCnt=0,scanStart=0;
+int missingCellCnt=0;
 Ticker watchDog;
 
 uint32_t AmpinvtSt = 0; // start time of toggle
@@ -33,14 +34,12 @@ class MyClientCallback;
 struct Cell {
   NimBLEClient* pClient;
   NimBLERemoteCharacteristic* pChar;
-  MyClientCallback* pCB;
   NimBLERemoteCharacteristic* pSettings;
   uint32_t cellDumpSecs,cellLast;
-  bool cellSentSet;
+  bool cellSentSet,sentEvent;
 };
 
 Cell cells[MAX_CELLS];
-SemaphoreHandle_t xMut;
 
 const int relayPins[C_RELAY_TOTAL] = { GPIO_NUM_19,GPIO_NUM_18,GPIO_NUM_2,GPIO_NUM_15,GPIO_NUM_13,GPIO_NUM_14,GPIO_NUM_27,GPIO_NUM_26,GPIO_NUM_25,GPIO_NUM_33 };
 
@@ -120,22 +119,21 @@ void sendCellSet(int i) {
 }
 
 class MyClientCallback : public NimBLEClientCallbacks {
-  public:
-  int cell;
-  MyClientCallback(int cell) {
-    this->cell = cell;
+  int findCell(NimBLEClient* pclient) {
+    int i=0;
+    while (i<cellBLE.numCells && cells[i].pClient != pclient) 
+      i++;
+    if (i == cellBLE.numCells) return -1;
+    return i;
   }
   void onConnect(NimBLEClient* pclient) {
-    st.cells[cell].conn = true;
-    st.cells[cell].volts = 0;
-    cells[cell].cellSentSet = false;
-    SettingMsg ms;
-    ms.cmd = ConnCell;
-    ms.val = cell;
-    BMSSend(&ms);
   }
 
   void onDisconnect(NimBLEClient* pclient) {
+    Serial.printf("Disconnected: %s\n",pclient->getPeerAddress().toString().c_str());
+    int cell = findCell(pclient);
+    if (cell < 0)
+      return;
     st.cells[cell].conn = false;
     st.cells[cell].volts = 0;
     SettingMsg ms;
@@ -143,34 +141,59 @@ class MyClientCallback : public NimBLEClientCallbacks {
     ms.val = cell;
     BMSSend(&ms);
   }
-};
+} myCB;
+
+#define mxToInterval(x) (x * 1000 / BLE_HCI_CONN_ITVL)
+NimBLEClient* InitCell(int i) {
+  NimBLEClient* pC = cells[i].pClient;
+  if (!pC) {
+    pC = NimBLEDevice::createClient(cellBLE.addrs[i]);
+    cells[i].pClient = pC;
+  }
+  pC->setClientCallbacks(&myCB,false);
+  pC->setConnectionParams(mxToInterval(100),mxToInterval(100),25,600);
+  pC->setConnectTimeout(6*1000);
+  st.cells[i].draining = false;
+  cells[i].cellDumpSecs = 0;
+  return pC;
+}
+void InitCells() {
+  for (int i=0;i<cellBLE.numCells;i++) {
+    cells[i].pClient = nullptr;
+    InitCell(i);
+  }
+}
 
 void ConnectCell(int i) {
-  NimBLEClient*  pC = cells[i].pClient;
-  if (!pC) return;
-  if (pC->isConnected()) {
-    if (!cells[i].cellSentSet)
-      sendCellSet(i);
+  NimBLEClient* pC = InitCell(i);
+  if (cellBLE.addrs[i] == emptyAddress || pC->isConnected())
     return;
-  }
-  // Connect to the remove BLE Server.
-  if (cellBLE.addrs[i] == emptyAddress)
-    return;
-Serial.printf("Connecting: %s\n",cellBLE.addrs[i].toString().c_str());
-  if (!pC->connect(BLEAddress(cellBLE.addrs[i]),true)) {
+  if (doShutOffNoStatus())
+    clearRelays();
+  st.cells[i].conn = false;
+  st.cells[i].volts = 0;
+  cells[i].cellSentSet = false;
+  cells[i].sentEvent = false;
+  cells[i].pSettings = nullptr;
+  cells[i].pChar = nullptr;
+  Serial.printf("Connecting to '%s'\n", cellBLE.addrs[i].toString().c_str());
+  bool c = pC->connect(cellBLE.addrs[i]);
+  if (!c) {
     Serial.printf("Failed to connect: %d, %s\n",i,((std::string)cellBLE.addrs[i]).c_str());
     return;
   }
-
+Serial.printf("connected: %d, %s\n",i,((std::string)cellBLE.addrs[i]).c_str());
   // Obtain a reference to the service we are after in the remote BLE server.
-  BLERemoteService* pServ = pC->getService(NimBLEUUID((uint16_t)0x180F));
+  NimBLERemoteService * pServ = pC->getService(NimBLEUUID((uint16_t)0x180F));
   if (pServ == nullptr) {
-    Serial.printf("Failed to find our service UUID: %d\n",i);
+    Serial.printf("Failed to find our service UUID: %d %d\n",i,pC->getLastError());
     pC->disconnect();
     return;
   }
+Serial.printf("got service: %d, %s\n",i,((std::string)cellBLE.addrs[i]).c_str());
   NimBLERemoteCharacteristic* pChar = pServ->getCharacteristic(NimBLEUUID((uint16_t)0x2B18)); // status
   if (pChar == nullptr) {
+    Serial.printf("Failed to find our characteristic UUID: %d\n",i);
     pC->disconnect();
     return;
   }
@@ -179,7 +202,12 @@ Serial.printf("Connecting: %s\n",cellBLE.addrs[i].toString().c_str());
                               uint8_t* pData, size_t length, bool isNotify) {
           int i=0;
           for (;i<cellBLE.numCells && cells[i].pChar != pBLERemoteCharacteristic;i++) ;
-          if (i == cellBLE.numCells) return;
+          if (i == cellBLE.numCells) {
+            Serial.printf("Did not find 0x%x",pBLERemoteCharacteristic);
+            for (i=0;i<cellBLE.numCells;i++) 
+              Serial.printf("%d: %x",i,pBLERemoteCharacteristic);;
+            return;
+          }
           CellStatus* cd = (CellStatus*)pData;
           st.cells[i].volts = cd->volts;
           st.cells[i].exTemp = cd->tempExt;
@@ -190,6 +218,7 @@ Serial.printf("Connecting: %s\n",cellBLE.addrs[i].toString().c_str());
         },false);
   cells[i].pSettings = pServ->getCharacteristic(NimBLEUUID((uint16_t)0x2B15)); // settings
   sendCellSet(i);
+  return;
 }
 
 void sendCellSets() {
@@ -197,48 +226,19 @@ void sendCellSets() {
     sendCellSet(i);
 }
 
-#define IntervalToms(x) (x * 1000 / BLE_HCI_CONN_ITVL)
-
-void InitCell(int i) {
-  NimBLEClient*  pC  = NimBLEDevice::createClient();
-
-  cells[i].pCB = new MyClientCallback(i);
-  pC->setClientCallbacks(cells[i].pCB,true);
-  pC->setConnectionParams(IntervalToms(100),IntervalToms(100),25,600);
-  cells[i].pClient = pC;
-  st.cells[i].draining = false;
-  cells[i].cellDumpSecs = 0;
-}
-void InitCells() {
-  for (int i=0;i<cellBLE.numCells;i++)
-    InitCell(i);
-}
-
-void ConnectCells() {
-  for (int i=0;i<cellBLE.numCells;i++) {
-    xSemaphoreTake( xMut, portMAX_DELAY );
-    ConnectCell(i);
-    xSemaphoreGive( xMut );
-  }
-}
-
-void checkMissingCell() {
-  int i=0;
-  for (;i<cellBLE.numCells && cellBLE.addrs[i] != emptyAddress;i++) ;
-  missingCell = i < cellBLE.numCells;
-  if (missingCell)
-    Serial.printf("Miss: %s\n",cellBLE.addrs[i].toString().c_str());
-  else Serial.println("All Present");
-}
-
 void CheckBLEScan() {
-  if ((dynSets.nCells > cellBLE.numCells || missingCell) && !scanStart && dynSets.nCells) {
+  missingCellCnt = 0;
+  for (int i=0;i<cellBLE.numCells;i++)
+    if (cellBLE.addrs[i] == emptyAddress)
+      missingCellCnt++;
+//  Serial.printf("%d unpaired cells\n",missingCellCnt);
+  if (dynSets.nCells && (dynSets.nCells > cellBLE.numCells || missingCellCnt) && !scanStart) {
     Serial.println("Starting scan");
     if (doShutOffNoStatus())
       clearRelays();
-    pBLEScan->start(0,NULL,false);
+    pBLEScan->start(0,false,true);
     scanStart = millis();
-  } else if (cellBLE.numCells == dynSets.nCells && !missingCell && scanStart) {
+  } else if (cellBLE.numCells == dynSets.nCells && !missingCellCnt && scanStart) {
     pBLEScan->stop(); // need to stop scanning to connect
     scanStart = 0;
     Serial.println("Stop scan");
@@ -247,27 +247,26 @@ void CheckBLEScan() {
 
 class adCB: public NimBLEScanCallbacks {
     void onResult(const NimBLEAdvertisedDevice* ad) {
-      Serial.printf("Got one '%s'\n",ad->getName().c_str());
-      if (!ad->getName().compare("LiFePo4 Cell")
+      Serial.printf("Got one '%s' %s\n",ad->getName().c_str(), ad->getAddress().toString().c_str());
+      if (!ad->getName().compare("JBT")
               && ad->haveServiceUUID()
               && ad->isAdvertisingService(NimBLEUUID((uint16_t)0x180F))) {
 
         int i=0;
-        for (;i<cellBLE.numCells && cellBLE.addrs[i] != ad->getAddress()
-           && cellBLE.addrs[i] != emptyAddress;i++) ;
+        for (;i<cellBLE.numCells && cellBLE.addrs[i] != ad->getAddress();i++) ; // search for existing
+        if (i == cellBLE.numCells)
+          for (i=0;i<cellBLE.numCells && cellBLE.addrs[i] != emptyAddress;i++) ; // find empty slot
         Serial.printf("Found %d %d\n",cellBLE.numCells,i);
         if (i < dynSets.nCells) {
           if (i==cellBLE.numCells)
             cellBLE.numCells++;
           cellBLE.addrs[i] = ad->getAddress();
-          Serial.printf("Add/Upd %d: %s\n",i,cellBLE.addrs[i].toString().c_str());
-          InitCell(i);
+          Serial.printf("Add/Upd %d: %s, %d %d\n",i,cellBLE.addrs[i].toString().c_str(),ad->getAddress().getType(),cellBLE.addrs[i].getType());
           writeCellSet = true;
         }
-        checkMissingCell();
       }
     }
-};
+} adCallbacks;
 
 void setOffset(int16_t val) {
   dynSets.coulombOffset = ((battCoulombs*val)/100) - coulombs;
@@ -542,6 +541,23 @@ void checkStatus()
   BMSSend(&st);
 }
 
+void checkCellsStatus() {
+  for (int i=0;i<dynSets.nCells;i++) {
+    NimBLEClient*  pC = cells[i].pClient;
+    if (!pC) continue;
+    if (!pC->isConnected()) continue;
+    if (!cells[i].cellSentSet)
+      sendCellSet(i);
+    if (!cells[i].sentEvent) {
+      SettingMsg ms;
+      ms.cmd = ConnCell;
+      ms.val = i;
+      BMSSend(&ms); 
+      cells[i].sentEvent = true;
+    }
+  }
+}
+
 void initdynSets() {
   dynSets.nCells=0;
   dynSets.BattAH = 1;
@@ -624,7 +640,8 @@ void DoSetting(uint8_t cmd,uint16_t val) {
       if (dynSets.nCells < cellBLE.numCells) {
         for (int i=dynSets.nCells;i<cellBLE.numCells;i++) {
           Serial.printf("Deleting %d\n",i);
-          NimBLEDevice::deleteClient(cells[i].pClient);
+          if (cells[i].pClient)
+            NimBLEDevice::deleteClient(cells[i].pClient);
           cells[i].pClient = NULL;
           cells[i].pSettings = NULL;
           cellBLE.addrs[i] = emptyAddress;
@@ -632,8 +649,10 @@ void DoSetting(uint8_t cmd,uint16_t val) {
         cellBLE.numCells = dynSets.nCells;
         writeCellSet = true;
       } else if (dynSets.nCells > cellBLE.numCells) {
-        for (int i=cellBLE.numCells;i<dynSets.nCells;i++)
+        for (int i=cellBLE.numCells;i<dynSets.nCells;i++) {
           cellBLE.addrs[i] = emptyAddress;
+          InitCell(i);
+        }
       }
       break;
     case SetRelayOff: {
@@ -648,7 +667,7 @@ void DoSetting(uint8_t cmd,uint16_t val) {
 void DoDump(DumpMsg *dm) {
   Serial.println("Doing dump\n");
     cells[dm->cell].cellDumpSecs = dm->secs;
-    BLERemoteService* pServ = cells[dm->cell].pClient->getService(NimBLEUUID((uint16_t)0x180F));
+    NimBLERemoteService * pServ = cells[dm->cell].pClient->getService(NimBLEUUID((uint16_t)0x180F));
     if (pServ) {
       NimBLERemoteCharacteristic* pChar = pServ->getCharacteristic(NimBLEUUID((uint16_t)0X2AE2));
       if (pChar) {
@@ -659,25 +678,21 @@ void DoDump(DumpMsg *dm) {
 }
 
 void DoMove(SettingMsg *mp) {
-  if (!mp->val)
+  if (!mp->val || (dynSets.nCells > cellBLE.numCells || missingCellCnt))
     return;
-  xSemaphoreTake( xMut, portMAX_DELAY );
   Cell x = cells[mp->val];
   NimBLEAddress a = cellBLE.addrs[mp->val];
   cells[mp->val] = cells[mp->val-1];
-  cells[mp->val].pCB->cell = mp->val;
   cellBLE.addrs[mp->val] = cellBLE.addrs[mp->val-1];
   cells[mp->val-1] = x;
-  cells[mp->val-1].pCB->cell = mp->val-1;
   cellBLE.addrs[mp->val-1] = a;
   writeCellSet = true;
-  xSemaphoreGive( xMut );
 }
 
 void DoForget(SettingMsg *mp) {
   if (mp->val >= MAX_CELLS)
     return;
-  missingCell = true;
+  missingCellCnt++;
   Serial.printf("forgetting: %d %s\n",mp->val,cellBLE.addrs[mp->val].toString().c_str());
   cellBLE.addrs[mp->val] = emptyAddress;
   if (!cells[mp->val].pClient) return;
@@ -724,9 +739,14 @@ void ConSerData(const AMsg *mp)
 }
 
 void BLETask(void *arg) {
+  int cell = 0;
   for (;;) {
-    ConnectCells();
     CheckBLEScan();
+    if (!missingCellCnt) {
+      if (cell >= cellBLE.numCells)
+        cell = 0;
+      ConnectCell(cell++);
+    }
     delay(CHECKCONNECT);
   }
 }
@@ -788,7 +808,7 @@ void RecCAN(int packetSize) {
   uint8_t dev = id >> 8;
   uint8_t msg = id & 0xff;
   if (dev != statSets.PVID && dev != statSets.MainID && dev != statSets.InvID) {
-    Serial.printf("Bad id: 0x%lx len: %d\n",id,packetSize);
+// should not serial in callback Serial.printf("Bad id: 0x%lx len: %d\n",id,packetSize);
       return;
   }
   if (msg < 0xfa) val = ReadIt(packetSize,1);
@@ -843,14 +863,13 @@ void setup() {
 
   SetAmpinvtVals();
 
-  NimBLEDevice::init("");
+  NimBLEDevice::init("JTCon");
   emptyAddress = NimBLEAddress("00:00:00:00:00:00", BLE_ADDR_PUBLIC);
   pBLEScan = NimBLEDevice::getScan();
-  pBLEScan->setScanCallbacks(new adCB(), false);
+  pBLEScan->setScanCallbacks(&adCallbacks, false);
+  pBLEScan->setActiveScan(true);
   pBLEScan->setMaxResults(0); // do not store the scan results, use callback only.
-
   Serial.printf("ncells %d\n",cellBLE.numCells);
-  checkMissingCell();
   dynSets.cmd = DynSets;
   statSets.cmd = StatSets;
 
@@ -869,7 +888,6 @@ void setup() {
   BMSSend(&statSets); 
   BMSSend(&dynSets); 
   digitalWrite(GREEN_LED,0);
-  xMut = xSemaphoreCreateMutex();
   xTaskCreate(BLETask, "BLE task", 4096, NULL, 10, NULL); // priority value?
   CAN.setPins(GPIO_NUM_21, GPIO_NUM_22);
   if (!CAN.begin(1E6)) {
@@ -899,7 +917,7 @@ void loop() {
   if ((millis() - pvPollMS) > POLLPV) {
     pvPollMS = millis();
   }
-
+  checkCellsStatus();
   if ((millis() - statusMS) > CHECKSTATUS)
     checkStatus();
   bool AState = digitalRead(INV);
