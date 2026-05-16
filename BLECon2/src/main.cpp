@@ -2,7 +2,6 @@
 #include <Wire.h>
 #include <NimBLEDevice.h>
 
-#include <time.h>
 #include <Ticker.h>
 #include <BMSADC.h>
 #include <BMSCommArd.h>
@@ -50,8 +49,8 @@ BLESettings cellBLE;
 BMSStatus st;
 char spb[1024];
 
-uint32_t ShuntMS[3];
-enum { Main, PV, Inv };
+uint32_t ShuntMS[2];
+enum { Main, PV };
 uint32_t statusMS=0,connectMS=0,pvPollMS=0;
 bool inAlertState = true;
 
@@ -327,8 +326,6 @@ void checkStatus()
   int nCellsAlive = 0;
   if ((millis() - ShuntMS[PV]) > statSets.ShuntErrTime)
     st.lastPVMilliAmps = 0;
-  if ((millis() - ShuntMS[Inv]) > statSets.ShuntErrTime)
-    st.lastInvMilliAmps = 0;
   if ((millis() - ShuntMS[Main]) > statSets.ShuntErrTime) {
     if (!shuntOverDue)
       SendEvent(ShuntOverDue);
@@ -575,11 +572,9 @@ void initstatSets() {
   statSets.ShuntErrTime = 750;
   statSets.MainID = 3;
   statSets.PVID = 4;
-  statSets.InvID = 6;
   statSets.bdVolts = 3300;
   statSets.ChargePct = 100;
   statSets.ChargePctRec = 0;
-  statSets.RunUpDays = 0;
   statSets.CellsOutMax = 80;
   statSets.CellsOutMin = 30;
   statSets.CellsOutTime = 12;
@@ -807,7 +802,7 @@ void RecCAN(int packetSize) {
   int64_t val;
   uint8_t dev = id >> 8;
   uint8_t msg = id & 0xff;
-  if (dev != statSets.PVID && dev != statSets.MainID && dev != statSets.InvID) {
+  if (dev != statSets.PVID && dev != statSets.MainID) {
 // should not serial in callback Serial.printf("Bad id: 0x%lx len: %d\n",id,packetSize);
       return;
   }
@@ -834,10 +829,6 @@ void RecCAN(int packetSize) {
     if (msg == 0xF1) // current
       st.lastPVMilliAmps = val;
     ShuntMS[PV] = millis();
-  } else if (dev == statSets.InvID) {
-    if (msg == 0xF1) // current
-      st.lastInvMilliAmps = val;
-    ShuntMS[Inv] = millis();
   }
 }
 
@@ -880,7 +871,6 @@ void setup() {
   lastShuntMillis = millis();
   setBattAH();
 
-  configTime(0,0,"pool.ntp.org");
   st.stateOfChargeValid = false;
   lastTrip = 0;
   st.doFullChg = true;

@@ -22,7 +22,7 @@
 
 char debugstr[200];
 bool emailSetup=false,writeCommSet=false,writeWifiSet=false
-  ,writeDispSet=false,writeRelaySet=false,setDoFullChg = false;
+  ,writeDispSet=false,writeRelaySet=false;
 uint32_t statusMS=0,tempMS=0,wifiMS=0;
 uint8_t wifiDeadCnt=0;
 HTTPClient http;
@@ -31,7 +31,6 @@ struct tm curTime;
 
 time_t lastEventTime=0;
 int curEvent=0;
-uint16_t daysTilRunUp = 1;
 uint8_t curDay = 0;
 Event evts[MAX_EVENTS];
 
@@ -205,15 +204,12 @@ void limits(AsyncWebServerRequest *request){
   root["bdVolts"]=statSets.bdVolts;
   root["ChargePct"]=statSets.ChargePct;
   root["ChargePctRec"]=statSets.ChargePctRec;
-  root["RunUpDays"]=statSets.RunUpDays;
   root["CellsOutMin"]=statSets.CellsOutMin;
   root["CellsOutMax"]=statSets.CellsOutMax;
   root["CellsOutTime"]=statSets.CellsOutTime;
   root["ShuntErrTime"] = statSets.ShuntErrTime;
   root["MainID"] = statSets.MainID;
   root["PVID"] = statSets.PVID;
-  root["InvID"] = statSets.InvID;
-  root["daysTilRunUp"] = daysTilRunUp;
 
   JsonObject obj = root.createNestedObject("limitSettings");
   for (int l0=0;l0<LimitConsts::Max0;l0++) {
@@ -793,11 +789,6 @@ void savelimits(AsyncWebServerRequest *request) {
     statSets.bdVolts = request->getParam("bdVolts", true)->value().toInt();
   if (request->hasParam("ChargePctRec", true))
     statSets.ChargePctRec = request->getParam("ChargePctRec", true)->value().toInt();
-  if (request->hasParam("RunUpDays", true))
-    statSets.RunUpDays = request->getParam("RunUpDays", true)->value().toInt();
-  if (statSets.RunUpDays < 1) statSets.RunUpDays = 1;
-  if (daysTilRunUp > statSets.RunUpDays)
-    daysTilRunUp = statSets.RunUpDays;
 
   if (request->hasParam("CellsOutMin", true))
     statSets.CellsOutMin = request->getParam("CellsOutMin", true)->value().toInt();
@@ -812,8 +803,6 @@ void savelimits(AsyncWebServerRequest *request) {
     statSets.MainID = request->getParam("MainID", true)->value().toInt();
   if (request->hasParam("PVID", true))
     statSets.PVID = request->getParam("PVID", true)->value().toInt();
-  if (request->hasParam("InvID", true))
-    statSets.InvID = request->getParam("InvID", true)->value().toInt();
 
   if (!statSets.useCellC) {
     st.maxCellCState = false;
@@ -1299,16 +1288,6 @@ void checkStatus()
       Serial.printf("Chg: %d to %d\n",n,previousRelayState[n]);
     }
   }
-  if (getLocalTime(&curTime,2)) {
-    if (curTime.tm_mday != curDay) {
-      curDay = curTime.tm_mday;
-      daysTilRunUp--;
-      if (!daysTilRunUp) {
-        setDoFullChg = true;
-        daysTilRunUp = statSets.RunUpDays;
-      }
-    }
-  }
   if (st.doFullChg) {
     int i=0;
     for (i=0;i<dynSets.nCells && CellsDiff[i] == 0xffff;i++);
@@ -1460,10 +1439,6 @@ void loop() {
   } else if (writeRelaySet) {
     writeEE("relay",(uint8_t*)&relSets,sizeof(relSets));
     writeRelaySet = false;
-  }
-  if (setDoFullChg) {
-    doFullChg(1);
-    setDoFullChg = false;
   }
   BMSGetSerial();
 
