@@ -145,10 +145,9 @@ class MyClientCallback : public NimBLEClientCallbacks {
 #define mxToInterval(x) (x * 1000 / BLE_HCI_CONN_ITVL)
 NimBLEClient* InitCell(int i) {
   NimBLEClient* pC = cells[i].pClient;
-  if (!pC) {
-    pC = NimBLEDevice::createClient(cellBLE.addrs[i]);
-    cells[i].pClient = pC;
-  }
+  if (pC) return pC;
+  pC = NimBLEDevice::createClient(cellBLE.addrs[i]);
+  cells[i].pClient = pC;
   pC->setClientCallbacks(&myCB,false);
   pC->setConnectionParams(mxToInterval(100),mxToInterval(100),25,600);
   pC->setConnectTimeout(6*1000);
@@ -413,11 +412,6 @@ void checkStatus()
   }
   uint16_t packV = (st.lastPackMilliVolts > totalVolts ? st.lastPackMilliVolts : totalVolts);
   if (packV > statSets.limits[LimitConsts::Volt][LimitConsts::Pack][LimitConsts::Max][LimitConsts::Trip]) {
-    if (!st.maxPackVState) {
-      if (!hitTop)
-        SendEvent(PackTopV,st.lastPackMilliVolts);
-      hitTop = true;
-    }
     st.maxPackVState = true;
   } else if (packV < statSets.limits[LimitConsts::Volt][LimitConsts::Pack][LimitConsts::Max][LimitConsts::Rec])
     st.maxPackVState = false;
@@ -456,14 +450,18 @@ void checkStatus()
     lastTrip = -1;
     st.stateOfChargeValid = true;
   }
-  if (st.stateOfChargeValid && !st.doFullChg) {
+  if (statSets.ChargePct == 100) {
+      if (hitTop)
+        st.maxChargePctState = true;
+      else if (st.stateOfCharge < statSets.ChargePctRec)
+        st.maxChargePctState = false;
+  } else if (st.stateOfChargeValid && !st.doFullChg) {
     if (st.stateOfCharge > statSets.ChargePct)
       st.maxChargePctState = true;
     else if (st.stateOfCharge < statSets.ChargePctRec)
       st.maxChargePctState = false;
   } else
     st.maxChargePctState = false;
-
   uint8_t relay[C_RELAY_TOTAL];
   bool wasLoadsOff = loadsOff;
   bool wasChgOff = chgOff;
