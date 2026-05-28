@@ -45,7 +45,6 @@
         </div>
         <div id="menu">
             <a href="cells" class="active">Cells</a>
-            <a href="slides">Slides</a>
             <a href="events">Events</a>
             <a href="temps">Temps</a>
             <a href="limits">Limits</a>
@@ -63,16 +62,6 @@
             <div id="cellsRow"><div id="cellTV" style="display: none;" class="stat"><div class="h">Temp</div><div class="t"></div><a class="v"></a></div></div>
             <div id="cellDiv">
             <canvas id="cellCan" ></canvas></div>
-        </div>
-        <div id="slides">
-            <button id="slideStop">Stop</button>
-            <button id="allOut">All Out</button>
-            <button id="allIn">All In</button>
-            <div id="slideControl">
-                <label id="slideName"></label>
-                <button>In</button>
-                <button>Out</button>
-            </div>
         </div>
         <div id="events">
             <table id="eventTable"><thead><tr>
@@ -171,8 +160,6 @@
                         <option value="CF">Enable Full Charge</option>
                         <option value="H">Batt Heat</option>
                         <option value="T">Thermostat</option>
-                        <option value="D">Direction</option>
-                        <option value="S">Slide</option>
                         <option value="A">Ampinvt</option>
                     </select>
                     <span id="relayDoSoC">
@@ -183,7 +170,6 @@
                     <span id="relayDoFrom"><label for="relayFrom">From:</label>
                         <input type="text" name="relayFrom" id="relayFrom" value=""></span>
                 </div>
-                <div><label for="slideMS">Slide time (ms):</label><input type="number" name="slideMS" id="slideMS" min="10000" max="60000"></div>
                 <div class="buttonhold"><input type="submit" value="Save Settings" /></div>
             </form>
         </div>

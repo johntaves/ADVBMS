@@ -81,7 +81,7 @@ struct StrMsg {
 #define WATCHDOGSLOP 2000
 
 enum {
-  Relay_Connect,Relay_Load,Relay_Charge,Relay_Heat,Relay_Direction,Relay_Slide,Relay_Therm,Relay_Ampinvt,Relay_Unused
+  Relay_Connect,Relay_Load,Relay_Charge,Relay_Heat,Relay_Therm,Relay_Ampinvt,Relay_Unused
 };
 
 struct Cells {
@@ -127,7 +127,7 @@ struct StatSetts {
   uint16_t limits[2][2][2][2],unused1,unused2,bdVolts;
   RelaySettings relays[C_RELAY_TOTAL];
   uint8_t ChargePct,ChargePctRec,CellsOutMin,CellsOutMax,CellsOutTime,MainID,PVID,unused3;
-  uint32_t slideMS,ShuntErrTime;
+  uint32_t ShuntErrTime;
 };
 
 struct DynSetts {

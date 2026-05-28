@@ -576,7 +576,6 @@ void initstatSets() {
   statSets.CellsOutMax = 80;
   statSets.CellsOutMin = 30;
   statSets.CellsOutTime = 12;
-  statSets.slideMS = 10000;
   InitRelays(&statSets.relays[0],C_RELAY_TOTAL);
   for (int i=0;i<C_RELAY_TOTAL;i++) {
     RelaySettings* r = &statSets.relays[i];
