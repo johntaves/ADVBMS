@@ -370,7 +370,6 @@ function queryBMS() {
             RELAY_TOTAL = data.RELAY_TOTAL;
         }
         if (data.W_RELAY_TOTAL && !W_RELAY_TOTAL) {
-            setupWRelays(data.W_RELAY_TOTAL);
             W_RELAY_TOTAL = data.W_RELAY_TOTAL;
         }
         for (var i=0;i<RELAY_TOTAL;i++) {
@@ -378,6 +377,11 @@ function queryBMS() {
             if (rn && rn.length) {
                 $("#relayStatus"+i).show();
                 $("#relayStatus"+i+" .h").html(rn);
+                if (data["relayOff"+i] == "off")
+                    $("#relayStatus"+i+" a.v").addClass("manoff");
+                else $("#relayStatus"+i+" a.v").removeClass("manoff");
+                $("#relayStatus"+i+" div.v").hide();
+                $("#relayStatus"+i+" a.v").html(data["relayStatus"+i]).show();
             } else $("#relayStatus"+i).hide();
         }
         if (data.watchDogHits) {
@@ -627,7 +631,7 @@ function setupRelays(rt) {
         temp.attr({id: "relay"+rel});
         temp.find("[for='relayName']").text("J"+rel+":");
         if (rel < 10)
-            temp.find("#relayType option[value='S'],#relayType option[value='D'],#relayType option[value='T']").hide();
+            temp.find("#relayType option[value='T']").hide();
         else
             temp.find("#relayType option[value='A']").hide();
         $.each(['Name','DoSoC','Type','Trip','Rec','DoFrom','From'],function (index,value) {
