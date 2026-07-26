@@ -48,7 +48,7 @@ StatSetts statSets;
 DispSettings dispSets;
 WRelaySettings relSets;
 int8_t Temp1,Temp2;
-uint8_t Water,Gas;
+uint8_t Gas;
 
 char spb[1024];
 
@@ -538,7 +538,6 @@ void fillStatusDoc(JsonVariant root) {
   root["AmpTemp"] = fromCel(st.ampTemp/10);
   root["Temp1"] = fromCel(Temp1);
   root["Temp2"] = fromCel(Temp2);
-  root["Water"] = Water;
   root["Gas"] = Gas;
   root["fullChg"] = st.doFullChg;
 
@@ -958,19 +957,10 @@ void checkTemps()
   Temp1 = BMSReadTemp(TEMP1,false,statSets.bdVolts,dispSets.t1B,dispSets.t1R,47000,dynSets.cnt);
 //  Serial.printf("1: %d %d %d %f, ",vp,Temp1,rt,T);
   Temp2 = BMSReadTemp(TEMP2,false,statSets.bdVolts,dispSets.t2B,dispSets.t2R,47000,dynSets.cnt);
-  // 2678 is 0 inches
-  // 3000 is known R
-  // 150 is slope
-  // 8inches is 100%
-  uint32_t v = BMSReadVoltage(WATER,dynSets.cnt);
-//  Serial.printf("W: Cnt: %d %d %d\n",dynSets.cnt,v,((v * 300000) / (statSets.bdVolts - v)));
-  if (v > 1210)
-    Water = 200;
-  else Water = 1000*(2678 - ((v * 3000) / (statSets.bdVolts - v))) / (1636*8);
 
   // min R 0, max R 90
   // 180 is known R, * 100 to get %
-  v = BMSReadVoltage(GAS,dynSets.cnt);
+  uint32_t v = BMSReadVoltage(GAS,dynSets.cnt);
 //  Serial.printf("G: %d %d %d\n",statSets.bdVolts,v,((v * 18000) / (statSets.bdVolts - v)));
   if (v > 1210)
     Gas = 200;
@@ -978,10 +968,9 @@ void checkTemps()
 //  Serial.printf("2: %d %d\n",vp,Temp2);
   if (!dynSets.resPwrOn)
     digitalWrite(RESISTOR_PWR,LOW);
-
+  
+  getLocalTime(&curTime);
   int curMin = (curTime.tm_hour * 60) + curTime.tm_min;
-  if (curTime.tm_year < 100)
-    return;
   for (int y=0;y<W_RELAY_TOTAL;y++) {
     RelaySettings *rp = &relSets.relays[y];
     ThermState* tsp = &thermState[y];
@@ -1000,26 +989,27 @@ void checkTemps()
       else if (tsp->hVal > rp->rec) tsp->heat = -1;
     }
   }
-  for (int i=dispSets.nTSets-1;i>=0;i--) { // work backwards to find first active on that relay
-    TempSet* ts = &dispSets.tSets[i];
-    if (ts->relay == 255) continue;
-    if (ts->startMin < ts->endMin) {
-      if (!(ts->dows & 1 << curTime.tm_wday)) continue;
-      if (ts->startMin > curMin || ts->endMin < curMin) continue;
-    } else {
-      if (ts->startMin > curMin && ts->endMin < curMin) continue;
-      if (ts->startMin < curMin && !(ts->dows & 1 << curTime.tm_wday)) continue;
-      int dow = curTime.tm_wday - 1;
-      if (dow < 0) dow = 6;
-      if (ts->endMin > curMin && !(ts->dows & 1 << dow)) continue;
+  if (curTime.tm_year > 100)
+    for (int i=dispSets.nTSets-1;i>=0;i--) { // work backwards to find first active on that relay
+      TempSet* ts = &dispSets.tSets[i];
+      if (ts->relay == 255) continue;
+      if (ts->startMin < ts->endMin) {
+        if (!(ts->dows & 1 << curTime.tm_wday)) continue;
+        if (ts->startMin > curMin || ts->endMin < curMin) continue;
+      } else {
+        if (ts->startMin > curMin && ts->endMin < curMin) continue;
+        if (ts->startMin < curMin && !(ts->dows & 1 << curTime.tm_wday)) continue;
+        int dow = curTime.tm_wday - 1;
+        if (dow < 0) dow = 6;
+        if (ts->endMin > curMin && !(ts->dows & 1 << dow)) continue;
+      }
+      ThermState* tsp = &thermState[ts->relay];
+      if (tsp->thermAct) continue;
+      tsp->thermAct = true;
+      tsp->tVal = ts->sens == 1 ? Temp1 : Temp2;
+      if (tsp->tVal < ts->tripTemp) tsp->therm = 1;
+      else if (tsp->tVal > ts->recTemp) tsp->therm = -1;
     }
-    ThermState* tsp = &thermState[ts->relay];
-    if (tsp->thermAct) continue;
-    tsp->thermAct = true;
-    tsp->tVal = ts->sens == 1 ? Temp1 : Temp2;
-    if (tsp->tVal < ts->tripTemp) tsp->therm = 1;
-    else if (tsp->tVal > ts->recTemp) tsp->therm = -1;
-  }
   for (int y=0;y<W_RELAY_TOTAL;y++) {   // turn off any that were not active
     RelaySettings *rp = &relSets.relays[y];
     if (rp->type != Relay_Heat && rp->type != Relay_Therm) 
@@ -1202,6 +1192,8 @@ void setup() {
 //    strcpy(wifiSets.password,"scruffy2023");
 //    strcpy(wifiSets.ssid,"Eldorado Guest");
 //    strcpy(wifiSets.password,"mauisunset");
+//    strcpy(wifiSets.ssid,"BADPRV");
+//    strcpy(wifiSets.password,"Laser133");
   WiFi.onEvent(wifiEvent);
   WiFiInit();
   BMSInitStatus(&st);

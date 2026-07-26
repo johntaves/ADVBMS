@@ -393,8 +393,8 @@ function queryBMS() {
         $("#timenow").html(d.toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit'
-          }).replace(" AM","").replace(" PM",""));
-        $("#datenow").html(d.toLocaleDateString([],{ day: 'numeric', month: 'numeric' }));
+          }).replace(" AM","").replace(" PM","")+"<br/>"+
+            d.toLocaleDateString([],{ day: '2-digit', month: '2-digit' }));
 
         $("#cellvolt").hide();
         if (data.maxCellVState || data.minCellVState)
@@ -474,15 +474,9 @@ function queryBMS() {
         else $("#AmpTemp").show();
         $("#AmpTemp .v").html(val);
 
-        val = data.Water;
-        if (val == 200) $("#Water").hide();
-        else $("#Water").show();
-        $("#Water .v").html(val + '%');
-
         val = data.Gas;
-        if (val == 200) $("#Gas").hide();
-        else $("#Gas").show();
-        $("#Gas .v").html(val + '%');
+        if (val == 200) $("#Gas .v").html("");
+        else $("#Gas .v").html(val + '%');
 
         $("#uptimec .v").html(data.uptimec);
         $("#uptimew .v").html(data.uptimew);
